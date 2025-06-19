@@ -48,9 +48,6 @@ const TeamRoster = ({ rosterId, week }) => {
     const position = player.position || 'Unknown';
     const team = player.team || '';
     const fullName = `${player.first_name || ''} ${player.last_name || ''}`.trim() || 'Unknown Player';
-    const points = matchup && matchup.players_points && player.playerId in matchup.players_points
-      ? matchup.players_points[player.playerId]
-      : null;
     
     return (
       <tr key={player.playerId || index} className="hover:bg-gray-50">

@@ -40,7 +40,7 @@ export const LeagueProvider = ({ children }) => {
         console.error('Error fetching NFL state:', err);
         setError(prev => prev || 'Failed to fetch NFL state');
       });
-  }, []);
+  }, [selectedSeason, availableSeasons.length]);
 
   // Fetch all players data once on mount
   useEffect(() => {
@@ -153,6 +153,7 @@ export const LeagueProvider = ({ children }) => {
           } else if (allMatchupsData.length > 0) {
              setMatchups(allMatchupsData);
           }
+          // Note: This check depends on league?.league_id and matchups.length
         }
 
         // Fetch historical league IDs and seasons

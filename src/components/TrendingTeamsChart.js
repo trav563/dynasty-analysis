@@ -29,7 +29,7 @@ const TrendingTeamsChart = () => {
     }));
     
     return getTrendingTeams(matchupsWithOwners, users, weeksToConsider);
-  }, [matchups, users, weeksToConsider, rosters, selectedSeason]);
+  }, [matchups, users, weeksToConsider, rosters]);
 
   const handleToggleTeam = (rosterId) => {
     setExcludedTeams(prev => 
