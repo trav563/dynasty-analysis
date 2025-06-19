@@ -114,7 +114,13 @@ const TrendingTeamsChart = () => {
   return (
     <div className="bg-white p-4 rounded-lg shadow-md">
       <div className="mb-4 flex flex-wrap items-center justify-between">
-        <h2 className="text-xl font-semibold">Trending Teams</h2>
+        <div>
+          <h2 className="text-xl font-semibold">Trending Teams</h2>
+          <p className="text-sm text-gray-600 mt-1">
+            Compares each team's most recent week's performance to their average in previous weeks.
+            Positive values indicate improvement, negative values indicate decline.
+          </p>
+        </div>
         <div className="flex items-center space-x-2">
           <label htmlFor="weeks-select" className="text-sm font-medium">
             Weeks to consider:

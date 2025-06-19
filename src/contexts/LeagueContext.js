@@ -1,6 +1,7 @@
-import React, { createContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useState, useEffect, useCallback, useRef } from 'react';
 import SleeperApiService from '../services/sleeperApi';
 import { getHistoricalLeagueIds, getSeasonFromLeague } from '../utils/dataUtils';
+import { saveToCache, loadFromCache, shouldUseCache } from '../utils/cacheUtils';
 
 // Create the context
 export const LeagueContext = createContext();
@@ -20,6 +21,9 @@ export const LeagueProvider = ({ children }) => {
   const [availableSeasons, setAvailableSeasons] = useState([]);
   const [selectedSeason, setSelectedSeason] = useState('2025'); // Default to 2025
   const [seasonLeagueIds, setSeasonLeagueIds] = useState({});
+  
+  // Use a ref to track season changes and force data refresh
+  const seasonChangeCounter = useRef(0);
   
   // Global, non-league-specific data
   const [allPlayersData, setAllPlayersData] = useState(null);
@@ -69,6 +73,8 @@ export const LeagueProvider = ({ children }) => {
     
     // Check if selected season is in the future
     const isFutureSeason = nflStateData && selectedSeason && parseInt(selectedSeason) > parseInt(nflStateData.season);
+    const isCurrentNflSeason = selectedSeason === nflStateData.season;
+    const shouldUseCacheForSeason = shouldUseCache(selectedSeason, nflStateData.season);
 
     const fetchAllLeagueData = async () => {
       setLoading(true);
@@ -77,83 +83,120 @@ export const LeagueProvider = ({ children }) => {
       setLeague(null); setUsers([]); setRosters([]); setMatchups([]);
 
       try {
-        const currentLeagueData = await SleeperApiService.getLeague(leagueId);
+        // Try to load league data from cache for past seasons
+        let currentLeagueData = null;
+        let leagueUsersData = null;
+        let leagueRostersData = null;
+        let allMatchupsData = [];
+        
+        // Check cache for past seasons
+        if (shouldUseCacheForSeason) {
+          console.log(`Attempting to load ${selectedSeason} data from cache for league ${leagueId}`);
+          currentLeagueData = loadFromCache('league', leagueId, selectedSeason);
+          leagueUsersData = loadFromCache('users', leagueId, selectedSeason);
+          leagueRostersData = loadFromCache('rosters', leagueId, selectedSeason);
+          const cachedMatchups = loadFromCache('matchups', leagueId, selectedSeason);
+          if (cachedMatchups) allMatchupsData = cachedMatchups;
+        }
+        
+        // If not in cache, fetch from API
+        if (!currentLeagueData) {
+          currentLeagueData = await SleeperApiService.getLeague(leagueId);
+          if (shouldUseCacheForSeason) {
+            saveToCache('league', leagueId, selectedSeason, currentLeagueData);
+          }
+        }
         setLeague(currentLeagueData);
 
-        const leagueUsersData = await SleeperApiService.getLeagueUsers(leagueId);
+        if (!leagueUsersData) {
+          leagueUsersData = await SleeperApiService.getLeagueUsers(leagueId);
+          if (shouldUseCacheForSeason) {
+            saveToCache('users', leagueId, selectedSeason, leagueUsersData);
+          }
+        }
         setUsers(leagueUsersData);
 
-        const leagueRostersData = await SleeperApiService.getLeagueRosters(leagueId);
+        if (!leagueRostersData) {
+          leagueRostersData = await SleeperApiService.getLeagueRosters(leagueId);
+          if (shouldUseCacheForSeason) {
+            saveToCache('rosters', leagueId, selectedSeason, leagueRostersData);
+          }
+        }
         setRosters(leagueRostersData);
 
-        // Fetch matchups
-        const seasonForMatchups = currentLeagueData.season || nflStateData.season;
-        const isCurrentNflSeason = seasonForMatchups === nflStateData.season;
-
-        // If it's a future season, set empty matchups
-        if (isFutureSeason) {
-          setMatchups([]);
-        } else if (isCurrentNflSeason && nflStateData.season_type !== 'regular' && nflStateData.season_type !== 'post') {
-          setMatchups([]);
+        // If matchups not in cache or it's current/future season, fetch them
+        if (allMatchupsData.length === 0 && !isFutureSeason) {
+          const seasonForMatchups = currentLeagueData.season || nflStateData.season;
+          
+          // For future seasons, we still want to try to fetch matchups (they might exist)
+          // For current season during offseason, we might not have matchups yet
+          const skipMatchups = isCurrentNflSeason && 
+                              nflStateData.season_type !== 'regular' && 
+                              nflStateData.season_type !== 'post';
+          
+          if (!skipMatchups) {
+            const maxWeeksToFetch = 18; // Standard NFL season weeks
+            
+            // Fetch matchups in batches to avoid overwhelming the API
+            // Fetch first 6 weeks
+            for (let week = 1; week <= 6; week++) {
+              try {
+                const weekMatchups = await SleeperApiService.getMatchups(leagueId, week);
+                if (weekMatchups && weekMatchups.length > 0) {
+                  weekMatchups.forEach(matchup => matchup.week = week);
+                  allMatchupsData.push(...weekMatchups);
+                  // Update matchups incrementally for better UX
+                  if (week === 6) {
+                    setMatchups([...allMatchupsData]);
+                  }
+                }
+              } catch (err) {
+                // console.log(`No matchups for week ${week} in league ${leagueId}`);
+              }
+            }
+            
+            // Fetch second batch (weeks 7-12)
+            for (let week = 7; week <= 12; week++) {
+              try {
+                const weekMatchups = await SleeperApiService.getMatchups(leagueId, week);
+                if (weekMatchups && weekMatchups.length > 0) {
+                  weekMatchups.forEach(matchup => matchup.week = week);
+                  allMatchupsData.push(...weekMatchups);
+                  // Update matchups incrementally for better UX
+                  if (week === 12) {
+                    setMatchups([...allMatchupsData]);
+                  }
+                }
+              } catch (err) {
+                // console.log(`No matchups for week ${week} in league ${leagueId}`);
+              }
+            }
+            
+            // Fetch final batch (weeks 13-18)
+            for (let week = 13; week <= maxWeeksToFetch; week++) {
+              try {
+                const weekMatchups = await SleeperApiService.getMatchups(leagueId, week);
+                if (weekMatchups && weekMatchups.length > 0) {
+                  weekMatchups.forEach(matchup => matchup.week = week);
+                  allMatchupsData.push(...weekMatchups);
+                }
+              } catch (err) {
+                // console.log(`No matchups for week ${week} in league ${leagueId}`);
+              }
+            }
+            
+            // Cache matchups for past seasons
+            if (shouldUseCacheForSeason && allMatchupsData.length > 0) {
+              saveToCache('matchups', leagueId, selectedSeason, allMatchupsData);
+            }
+          }
+        }
+        
+        // Set matchups state
+        if (allMatchupsData.length > 0) {
+          setMatchups(allMatchupsData);
         } else {
-          const allMatchupsData = [];
-          const maxWeeksToFetch = 18; // Standard NFL season weeks
-          
-          // Fetch matchups in batches to avoid overwhelming the API
-          // Fetch first 6 weeks
-          for (let week = 1; week <= 6; week++) {
-            try {
-              const weekMatchups = await SleeperApiService.getMatchups(leagueId, week);
-              if (weekMatchups && weekMatchups.length > 0) {
-                weekMatchups.forEach(matchup => matchup.week = week);
-                allMatchupsData.push(...weekMatchups);
-                // Update matchups incrementally for better UX
-                if (week === 6) {
-                  setMatchups([...allMatchupsData]);
-                }
-              }
-            } catch (err) {
-              // console.log(`No matchups for week ${week} in league ${leagueId}`);
-            }
-          }
-          
-          // Fetch second batch (weeks 7-12)
-          for (let week = 7; week <= 12; week++) {
-            try {
-              const weekMatchups = await SleeperApiService.getMatchups(leagueId, week);
-              if (weekMatchups && weekMatchups.length > 0) {
-                weekMatchups.forEach(matchup => matchup.week = week);
-                allMatchupsData.push(...weekMatchups);
-                // Update matchups incrementally for better UX
-                if (week === 12) {
-                  setMatchups([...allMatchupsData]);
-                }
-              }
-            } catch (err) {
-              // console.log(`No matchups for week ${week} in league ${leagueId}`);
-            }
-          }
-          
-          // Fetch final batch (weeks 13-18)
-          for (let week = 13; week <= maxWeeksToFetch; week++) {
-            try {
-              const weekMatchups = await SleeperApiService.getMatchups(leagueId, week);
-              if (weekMatchups && weekMatchups.length > 0) {
-                weekMatchups.forEach(matchup => matchup.week = week);
-                allMatchupsData.push(...weekMatchups);
-              }
-            } catch (err) {
-              // console.log(`No matchups for week ${week} in league ${leagueId}`);
-            }
-          }
-          
-          if (allMatchupsData.length === 0 && matchups.length > 0 && leagueId !== league?.league_id) {
-             // If no matchups found for new league, clear old ones
-             setMatchups([]);
-          } else if (allMatchupsData.length > 0) {
-             setMatchups(allMatchupsData);
-          }
-          // Note: This check depends on league?.league_id and matchups.length
+          setMatchups([]);
         }
 
         // Fetch historical league IDs and seasons
@@ -208,7 +251,7 @@ export const LeagueProvider = ({ children }) => {
     };
 
     fetchAllLeagueData();
-  }, [leagueId, allPlayersData, nflStateData, selectedSeason]); // Effect dependencies
+  }, [leagueId, allPlayersData, nflStateData, selectedSeason, seasonChangeCounter.current]); // Effect dependencies
 
   // Change league ID
   const changeLeagueId = useCallback((id) => {
@@ -223,12 +266,26 @@ export const LeagueProvider = ({ children }) => {
 
     console.log('Changing season to:', season);
     const newLeagueIdForSeason = seasonLeagueIds[season];
-    setSelectedSeason(season); // Set season first
+    
+    // Increment the season change counter to force a refresh
+    seasonChangeCounter.current += 1;
+    
+    // Set the selected season first
+    setSelectedSeason(season);
 
+    // If the league ID is different, update it to trigger the main useEffect
     if (newLeagueIdForSeason !== leagueId) {
-      setLeagueId(newLeagueIdForSeason); // This will trigger the main useEffect
+      setLeagueId(newLeagueIdForSeason);
+    } else {
+      // If the league ID is the same but the season changed, we need to force a refresh
+      // by clearing the data and setting loading to true
+      setLoading(true);
+      setMatchups([]);
+      setRosters([]);
+      setUsers([]);
+      
+      // The main useEffect will handle fetching the new data since selectedSeason changed
     }
-    // If leagueId is the same, data is already for that ID, selectedSeason just updated.
   }, [seasonLeagueIds, selectedSeason, leagueId]);
 
 
