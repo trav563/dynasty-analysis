@@ -1,0 +1,15 @@
+{
+  "files": {
+    "main.css": "/dynasty-analysis/static/css/main.dba36ce1.css",
+    "main.js": "/dynasty-analysis/static/js/main.fe05df37.js",
+    "static/js/453.facc18df.chunk.js": "/dynasty-analysis/static/js/453.facc18df.chunk.js",
+    "index.html": "/dynasty-analysis/index.html",
+    "main.dba36ce1.css.map": "/dynasty-analysis/static/css/main.dba36ce1.css.map",
+    "main.fe05df37.js.map": "/dynasty-analysis/static/js/main.fe05df37.js.map",
+    "453.facc18df.chunk.js.map": "/dynasty-analysis/static/js/453.facc18df.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.dba36ce1.css",
+    "static/js/main.fe05df37.js"
+  ]
+}
