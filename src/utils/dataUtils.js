@@ -27,24 +27,33 @@ export const calculateAveragePoints = (matchups, rosterId) => {
 export const calculateWinRate = (matchups, rosterId) => {
   if (!matchups || !matchups.length) return 0;
   
-  // Group matchups by week
-  const matchupsByWeek = matchups.reduce((acc, matchup) => {
-    if (!acc[matchup.matchup_id]) {
-      acc[matchup.matchup_id] = [];
+  // First, filter to only get matchups for this roster
+  const teamMatchups = matchups.filter(m => m.roster_id === parseInt(rosterId));
+  if (!teamMatchups.length) return 0;
+  
+  // Group matchups by week and matchup_id to find opponents
+  const matchupsByWeekAndId = {};
+  
+  // Organize all matchups by week and matchup_id
+  matchups.forEach(matchup => {
+    const key = `${matchup.week}_${matchup.matchup_id}`;
+    if (!matchupsByWeekAndId[key]) {
+      matchupsByWeekAndId[key] = [];
     }
-    acc[matchup.matchup_id].push(matchup);
-    return acc;
-  }, {});
+    matchupsByWeekAndId[key].push(matchup);
+  });
   
   let wins = 0;
   let totalGames = 0;
   
-  // For each matchup, determine if the team won
-  Object.values(matchupsByWeek).forEach(weekMatchup => {
-    const teamMatchup = weekMatchup.find(m => m.roster_id === parseInt(rosterId));
-    if (!teamMatchup) return;
+  // For each team matchup, find the corresponding opponent in the same week and matchup_id
+  teamMatchups.forEach(teamMatchup => {
+    const key = `${teamMatchup.week}_${teamMatchup.matchup_id}`;
+    const matchupGroup = matchupsByWeekAndId[key];
     
-    const opponentMatchup = weekMatchup.find(m => m.roster_id !== parseInt(rosterId));
+    if (!matchupGroup || matchupGroup.length < 2) return; // Need at least 2 teams in a matchup
+    
+    const opponentMatchup = matchupGroup.find(m => m.roster_id !== parseInt(rosterId));
     if (!opponentMatchup) return;
     
     totalGames++;
@@ -88,54 +97,52 @@ export const getStandings = (rosters, users) => {
     });
 };
 
-/**
- * Get trending teams based on recent performance
- * @param {Array} matchups - Array of matchup data for all weeks
- * @param {Array} users - Array of user data
- * @param {number} weeksToConsider - Number of recent weeks to consider
- * @returns {Array} - Trending teams data
- */
-export const getTrendingTeams = (matchups, users, weeksToConsider = 3) => {
-  if (!matchups || !matchups.length || !users) return [];
-  
-  // Group matchups by week
-  const matchupsByWeek = matchups.reduce((acc, matchup) => {
-    if (!acc[matchup.week]) {
-      acc[matchup.week] = [];
-    }
-    acc[matchup.week].push(matchup);
-    return acc;
-  }, {});
-  
-  // Get the weeks in descending order
-  const weeks = Object.keys(matchupsByWeek)
-    .map(Number)
-    .sort((a, b) => b - a)
-    .slice(0, weeksToConsider);
-  
-  // Calculate recent performance for each team
-  const teamPerformance = {};
-  
-  weeks.forEach(week => {
-    matchupsByWeek[week].forEach(matchup => {
-      if (!teamPerformance[matchup.roster_id]) {
-        const user = users.find(u => {
-          const roster = matchup.roster_id;
-          return u.roster_id === roster;
-        });
-        
-        teamPerformance[matchup.roster_id] = {
-          rosterId: matchup.roster_id,
-          teamName: user?.display_name || `Team ${matchup.roster_id}`,
-          avatar: user?.avatar,
-          points: [],
-          trend: 0,
-        };
+  /**
+   * Get trending teams based on recent performance
+   * @param {Array} matchups - Array of matchup data for all weeks
+   * @param {Array} users - Array of user data
+   * @param {number} weeksToConsider - Number of recent weeks to consider
+   * @returns {Array} - Trending teams data
+   */
+  export const getTrendingTeams = (matchups, users, weeksToConsider = 3) => {
+    if (!matchups || !matchups.length || !users) return [];
+    
+    // Group matchups by week
+    const matchupsByWeek = matchups.reduce((acc, matchup) => {
+      if (!acc[matchup.week]) {
+        acc[matchup.week] = [];
       }
-      
-      teamPerformance[matchup.roster_id].points.push(matchup.points || 0);
+      acc[matchup.week].push(matchup);
+      return acc;
+    }, {});
+    
+    // Get the weeks in descending order
+    const weeks = Object.keys(matchupsByWeek)
+      .map(Number)
+      .sort((a, b) => b - a)
+      .slice(0, weeksToConsider);
+    
+    // Calculate recent performance for each team
+    const teamPerformance = {};
+    
+    weeks.forEach(week => {
+      matchupsByWeek[week].forEach(matchup => {
+        if (!teamPerformance[matchup.roster_id]) {
+          // Find the user who owns this roster by matching user_id with owner_id
+          const user = users.find(u => u.user_id === matchup.owner_id);
+          
+          teamPerformance[matchup.roster_id] = {
+            rosterId: matchup.roster_id,
+            teamName: user?.display_name || `Team ${matchup.roster_id}`,
+            avatar: user?.avatar,
+            points: [],
+            trend: 0,
+          };
+        }
+        
+        teamPerformance[matchup.roster_id].points.push(matchup.points || 0);
+      });
     });
-  });
   
   // Calculate trend (positive or negative)
   Object.values(teamPerformance).forEach(team => {

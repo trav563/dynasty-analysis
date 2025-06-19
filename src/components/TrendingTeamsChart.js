@@ -9,13 +9,27 @@ import SleeperApiService from '../services/sleeperApi';
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
 const TrendingTeamsChart = () => {
-  const { matchups, users, loading } = useContext(LeagueContext);
+  const { matchups, users, rosters, loading, selectedSeason } = useContext(LeagueContext);
   const [weeksToConsider, setWeeksToConsider] = useState(3);
   const [excludedTeams, setExcludedTeams] = useState([]);
 
   const trendingTeams = useMemo(() => {
-    return getTrendingTeams(matchups, users, weeksToConsider);
-  }, [matchups, users, weeksToConsider]);
+    // Create a map of roster_id to owner_id from rosters data
+    const rosterOwnerMap = {};
+    if (rosters && rosters.length > 0) {
+      rosters.forEach(roster => {
+        rosterOwnerMap[roster.roster_id] = roster.owner_id;
+      });
+    }
+    
+    // Add owner_id to each matchup
+    const matchupsWithOwners = matchups.map(matchup => ({
+      ...matchup,
+      owner_id: rosterOwnerMap[matchup.roster_id]
+    }));
+    
+    return getTrendingTeams(matchupsWithOwners, users, weeksToConsider);
+  }, [matchups, users, weeksToConsider, rosters, selectedSeason]);
 
   const handleToggleTeam = (rosterId) => {
     setExcludedTeams(prev => 

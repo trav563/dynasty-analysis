@@ -66,6 +66,9 @@ export const LeagueProvider = ({ children }) => {
       setError(null);
       return;
     }
+    
+    // Check if selected season is in the future
+    const isFutureSeason = nflStateData && selectedSeason && parseInt(selectedSeason) > parseInt(nflStateData.season);
 
     const fetchAllLeagueData = async () => {
       setLoading(true);
@@ -87,7 +90,10 @@ export const LeagueProvider = ({ children }) => {
         const seasonForMatchups = currentLeagueData.season || nflStateData.season;
         const isCurrentNflSeason = seasonForMatchups === nflStateData.season;
 
-        if (isCurrentNflSeason && nflStateData.season_type !== 'regular' && nflStateData.season_type !== 'post') {
+        // If it's a future season, set empty matchups
+        if (isFutureSeason) {
+          setMatchups([]);
+        } else if (isCurrentNflSeason && nflStateData.season_type !== 'regular' && nflStateData.season_type !== 'post') {
           setMatchups([]);
         } else {
           const allMatchupsData = [];

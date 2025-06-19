@@ -84,7 +84,7 @@ const TeamRoster = ({ rosterId, week }) => {
           </span>
         </td>
         <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
-          {points !== null ? points.toFixed(2) : '-'}
+          <span className="text-gray-400">Not available</span>
         </td>
       </tr>
     );
