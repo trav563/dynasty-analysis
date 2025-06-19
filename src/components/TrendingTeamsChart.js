@@ -168,6 +168,13 @@ const TrendingTeamsChart = () => {
                 {team.trend > 0 ? '+' : ''}
                 {team.trend.toFixed(1)}
               </span>
+              <span 
+                className="ml-1 text-xs text-gray-500 cursor-help"
+                title={`Most recent week (${team.debug?.mostRecentWeek}): ${team.debug?.mostRecentPoints.toFixed(1)} pts
+Previous weeks avg (${team.debug?.previousWeeks.join(', ')}): ${team.debug?.previousWeeksAvg.toFixed(1)} pts`}
+              >
+                ℹ️
+              </span>
             </button>
           ))}
         </div>

@@ -135,7 +135,7 @@ export const LeagueProvider = ({ children }) => {
                               nflStateData.season_type !== 'post';
           
           if (!skipMatchups) {
-            const maxWeeksToFetch = 18; // Standard NFL season weeks
+            const maxWeeksToFetch = 17; // League runs weeks 1-17 only
             
             // Fetch matchups in batches to avoid overwhelming the API
             // Fetch first 6 weeks

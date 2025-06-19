@@ -8,7 +8,11 @@ import WeeklyScorecard from '../components/WeeklyScorecard';
 import PerformanceChart from '../components/PerformanceChart';
 
 const Dashboard = () => {
-  const { league, loading, error } = useContext(LeagueContext);
+  const { league, loading, error, matchups, selectedSeason, nflState } = useContext(LeagueContext);
+  
+  // Check if we're viewing a future season with no matchups
+  const isFutureSeason = nflState && selectedSeason && parseInt(selectedSeason) > parseInt(nflState.season);
+  const hasNoMatchups = matchups && matchups.length === 0;
 
   if (error) {
     return (
@@ -42,6 +46,15 @@ const Dashboard = () => {
       {loading ? (
         <div className="flex justify-center items-center h-64">
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        </div>
+      ) : isFutureSeason && hasNoMatchups ? (
+        <div className="bg-blue-100 border border-blue-400 text-blue-700 px-4 py-3 rounded relative mb-6">
+          <strong className="font-bold">Future Season Notice: </strong>
+          <span className="block sm:inline">
+            You're viewing the {selectedSeason} season which hasn't started yet. 
+            No matchups are available from the Sleeper API for future seasons.
+            Statistics and matchups will appear here once the season begins.
+          </span>
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

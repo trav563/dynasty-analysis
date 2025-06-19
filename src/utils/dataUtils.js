@@ -116,16 +116,28 @@ export const getStandings = (rosters, users) => {
       return acc;
     }, {});
     
-    // Get the weeks in descending order
-    const weeks = Object.keys(matchupsByWeek)
-      .map(Number)
-      .sort((a, b) => b - a)
-      .slice(0, weeksToConsider);
+    // Get all available weeks
+    const allWeeks = Object.keys(matchupsByWeek).map(Number);
+    
+    // If no weeks available, return empty array
+    if (allWeeks.length === 0) return [];
+    
+    // Get the weeks in descending order (most recent first)
+    // Make sure we only consider the number of weeks specified by weeksToConsider
+    // and that we have at least that many weeks of data
+    const sortedWeeks = allWeeks.sort((a, b) => b - a);
+    const weeksToUse = sortedWeeks.slice(0, Math.min(weeksToConsider, sortedWeeks.length));
+    
+    // If we don't have at least 2 weeks of data, we can't calculate a trend
+    if (weeksToUse.length < 2) {
+      return [];
+    }
     
     // Calculate recent performance for each team
     const teamPerformance = {};
     
-    weeks.forEach(week => {
+    // First, initialize team data for all teams that have matchups in any of the weeks we're considering
+    weeksToUse.forEach(week => {
       matchupsByWeek[week].forEach(matchup => {
         if (!teamPerformance[matchup.roster_id]) {
           // Find the user who owns this roster by matching user_id with owner_id
@@ -135,24 +147,48 @@ export const getStandings = (rosters, users) => {
             rosterId: matchup.roster_id,
             teamName: user?.display_name || `Team ${matchup.roster_id}`,
             avatar: user?.avatar,
-            points: [],
+            weeklyPoints: {}, // Store points by week for more detailed analysis
             trend: 0,
           };
         }
         
-        teamPerformance[matchup.roster_id].points.push(matchup.points || 0);
+        // Store points by week
+        teamPerformance[matchup.roster_id].weeklyPoints[week] = matchup.points || 0;
       });
     });
-  
-  // Calculate trend (positive or negative)
-  Object.values(teamPerformance).forEach(team => {
-    if (team.points.length >= 2) {
-      // Calculate trend as the difference between most recent week and average of previous weeks
-      const mostRecent = team.points[0];
-      const previousAvg = team.points.slice(1).reduce((sum, p) => sum + p, 0) / (team.points.length - 1);
-      team.trend = mostRecent - previousAvg;
-    }
-  });
+    
+    // Calculate trend (positive or negative) for each team
+    Object.values(teamPerformance).forEach(team => {
+      // Get the most recent week's points
+      const mostRecentWeek = weeksToUse[0];
+      const mostRecentPoints = team.weeklyPoints[mostRecentWeek] || 0;
+      
+      // Calculate average of previous weeks
+      let previousWeeksSum = 0;
+      let previousWeeksCount = 0;
+      
+      for (let i = 1; i < weeksToUse.length; i++) {
+        const week = weeksToUse[i];
+        if (team.weeklyPoints[week] !== undefined) {
+          previousWeeksSum += team.weeklyPoints[week];
+          previousWeeksCount++;
+        }
+      }
+      
+      const previousWeeksAvg = previousWeeksCount > 0 ? previousWeeksSum / previousWeeksCount : 0;
+      
+      // Calculate trend
+      team.trend = mostRecentPoints - previousWeeksAvg;
+      
+      // Add debug info
+      team.debug = {
+        mostRecentWeek,
+        mostRecentPoints,
+        previousWeeks: weeksToUse.slice(1),
+        previousWeeksPoints: weeksToUse.slice(1).map(w => team.weeklyPoints[w]),
+        previousWeeksAvg,
+      };
+    });
   
   // Return teams sorted by trend (highest first)
   return Object.values(teamPerformance)

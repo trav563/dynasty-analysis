@@ -9,8 +9,12 @@ import SleeperApiService from '../services/sleeperApi';
 
 const TeamDetails = () => {
   const { rosterId } = useParams();
-  const { rosters, users, matchups, loading, error, league } = useContext(LeagueContext);
+  const { rosters, users, matchups, loading, error, league, selectedSeason, nflState } = useContext(LeagueContext);
   const [selectedWeek, setSelectedWeek] = useState(1);
+  
+  // Check if we're viewing a future season with no matchups
+  const isFutureSeason = nflState && selectedSeason && parseInt(selectedSeason) > parseInt(nflState.season);
+  const hasNoMatchups = matchups && matchups.length === 0;
 
   // Get roster and user data
   const rosterData = useMemo(() => {
@@ -78,6 +82,17 @@ const TeamDetails = () => {
         </Link>
         <SeasonSelector />
       </div>
+      
+      {isFutureSeason && hasNoMatchups && (
+        <div className="bg-blue-100 border border-blue-400 text-blue-700 px-4 py-3 rounded relative mb-6">
+          <strong className="font-bold">Future Season Notice: </strong>
+          <span className="block sm:inline">
+            You're viewing the {selectedSeason} season which hasn't started yet. 
+            No matchups are available from the Sleeper API for future seasons.
+            Statistics and matchups will appear here once the season begins.
+          </span>
+        </div>
+      )}
 
       <div className="bg-white p-6 rounded-lg shadow-md mb-6">
         <div className="flex flex-col md:flex-row items-center md:items-start gap-6">
