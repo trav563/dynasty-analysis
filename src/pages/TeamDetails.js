@@ -109,7 +109,7 @@ const TeamDetails = () => {
             <h1 className="text-3xl font-bold text-gray-800">{user.display_name}</h1>
             {league && (
               <p className="text-gray-600 mt-1">
-                {league.name} - {league.season} Season
+                {league.name} - {selectedSeason} Season
               </p>
             )}
             <div className="mt-4 flex flex-wrap gap-3">

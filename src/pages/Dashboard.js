@@ -33,7 +33,7 @@ const Dashboard = () => {
           <h1 className="text-3xl font-bold text-gray-800">Dynasty Analysis</h1>
           {league && (
             <p className="text-gray-600 mt-1">
-              {league.name} - {league.season} Season
+              {league.name} - {selectedSeason} Season
             </p>
           )}
         </div>

@@ -22,8 +22,8 @@ export const LeagueProvider = ({ children }) => {
   const [selectedSeason, setSelectedSeason] = useState('2025'); // Default to 2025
   const [seasonLeagueIds, setSeasonLeagueIds] = useState({});
   
-  // Use a ref to track season changes and force data refresh
-  const seasonChangeCounter = useRef(0);
+  // Use state to track season changes and force data refresh
+  const [seasonChangeCounter, setSeasonChangeCounter] = useState(0);
   
   // Global, non-league-specific data
   const [allPlayersData, setAllPlayersData] = useState(null);
@@ -251,7 +251,7 @@ export const LeagueProvider = ({ children }) => {
     };
 
     fetchAllLeagueData();
-  }, [leagueId, allPlayersData, nflStateData, selectedSeason, seasonChangeCounter.current]); // Effect dependencies
+  }, [leagueId, allPlayersData, nflStateData, selectedSeason, seasonChangeCounter]); // Effect dependencies
 
   // Change league ID
   const changeLeagueId = useCallback((id) => {
@@ -268,24 +268,25 @@ export const LeagueProvider = ({ children }) => {
     const newLeagueIdForSeason = seasonLeagueIds[season];
     
     // Increment the season change counter to force a refresh
-    seasonChangeCounter.current += 1;
+    setSeasonChangeCounter(prev => prev + 1);
     
     // Set the selected season first
     setSelectedSeason(season);
 
+    // Clear data and set loading to true for a clean transition
+    setLoading(true);
+    setMatchups([]);
+    setRosters([]);
+    setUsers([]);
+    setLeague(null);
+    
     // If the league ID is different, update it to trigger the main useEffect
     if (newLeagueIdForSeason !== leagueId) {
+      console.log(`Updating league ID from ${leagueId} to ${newLeagueIdForSeason} for season ${season}`);
       setLeagueId(newLeagueIdForSeason);
-    } else {
-      // If the league ID is the same but the season changed, we need to force a refresh
-      // by clearing the data and setting loading to true
-      setLoading(true);
-      setMatchups([]);
-      setRosters([]);
-      setUsers([]);
-      
-      // The main useEffect will handle fetching the new data since selectedSeason changed
     }
+    
+    // The main useEffect will handle fetching the new data since selectedSeason and seasonChangeCounter changed
   }, [seasonLeagueIds, selectedSeason, leagueId]);
 
 
