@@ -27,6 +27,7 @@ export const LeagueProvider = ({ children }) => {
   const [nflStateData, setNflStateData] = useState(null);
 
   // Fetch NFL state once on mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     SleeperApiService.getNflState()
       .then(data => {
@@ -41,7 +42,7 @@ export const LeagueProvider = ({ children }) => {
         console.error('Error fetching NFL state:', err);
         setError(prev => prev || 'Failed to fetch NFL state');
       });
-  }, []); // Fetch NFL state only once on mount
+  }, []); // Fetch NFL state only once on mount - intentionally omitting dependencies
 
   // Fetch all players data once on mount
   useEffect(() => {
@@ -123,8 +124,6 @@ export const LeagueProvider = ({ children }) => {
 
         // If matchups not in cache or it's current/future season, fetch them
         if (allMatchupsData.length === 0 && !isFutureSeason) {
-          const seasonForMatchups = currentLeagueData.season || nflStateData.season;
-          
           // For future seasons, we still want to try to fetch matchups (they might exist)
           // For current season during offseason, we might not have matchups yet
           const skipMatchups = isCurrentNflSeason && 

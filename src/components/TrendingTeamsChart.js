@@ -9,7 +9,7 @@ import SleeperApiService from '../services/sleeperApi';
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
 const TrendingTeamsChart = () => {
-  const { matchups, users, rosters, loading, selectedSeason } = useContext(LeagueContext);
+  const { matchups, users, rosters, loading } = useContext(LeagueContext);
   const [weeksToConsider, setWeeksToConsider] = useState(3);
   const [excludedTeams, setExcludedTeams] = useState([]);
 
