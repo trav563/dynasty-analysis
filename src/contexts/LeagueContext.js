@@ -1,4 +1,4 @@
-import React, { createContext, useState, useEffect, useCallback, useRef } from 'react';
+import React, { createContext, useState, useEffect, useCallback } from 'react';
 import SleeperApiService from '../services/sleeperApi';
 import { getHistoricalLeagueIds, getSeasonFromLeague } from '../utils/dataUtils';
 import { saveToCache, loadFromCache, shouldUseCache } from '../utils/cacheUtils';
@@ -22,9 +22,6 @@ export const LeagueProvider = ({ children }) => {
   const [selectedSeason, setSelectedSeason] = useState('2025'); // Default to 2025
   const [seasonLeagueIds, setSeasonLeagueIds] = useState({});
   
-  // Use state to track season changes and force data refresh
-  const [seasonChangeCounter, setSeasonChangeCounter] = useState(0);
-  
   // Global, non-league-specific data
   const [allPlayersData, setAllPlayersData] = useState(null);
   const [nflStateData, setNflStateData] = useState(null);
@@ -44,7 +41,7 @@ export const LeagueProvider = ({ children }) => {
         console.error('Error fetching NFL state:', err);
         setError(prev => prev || 'Failed to fetch NFL state');
       });
-  }, [selectedSeason, availableSeasons.length]);
+  }, []); // Fetch NFL state only once on mount
 
   // Fetch all players data once on mount
   useEffect(() => {
@@ -232,11 +229,18 @@ export const LeagueProvider = ({ children }) => {
         const sortedAvailable = Object.keys(seasonsMap).sort((a, b) => parseInt(b) - parseInt(a));
         setAvailableSeasons(sortedAvailable);
 
-        // Ensure selectedSeason is valid
-        if (sortedAvailable.length > 0 && !sortedAvailable.includes(selectedSeason)) {
-          setSelectedSeason(sortedAvailable[0]);
-        } else if (sortedAvailable.length === 0) {
-          setSelectedSeason(nflStateData.season || '2025'); // Fallback if no seasons derived
+        // This logic ensures selectedSeason is one of the available seasons, defaulting to the latest.
+        // It might trigger a re-run of this effect if selectedSeason changes.
+        // This is generally safe if it's correcting an invalid state.
+        if (nflStateData) { // Ensure nflStateData is available for fallback
+          if (sortedAvailable.length > 0 && !sortedAvailable.includes(selectedSeason)) {
+            const newSelectedSeason = sortedAvailable[0];
+            // Only update if different to prevent potential loops if logic is slightly off
+            if (newSelectedSeason !== selectedSeason) setSelectedSeason(newSelectedSeason);
+          } else if (sortedAvailable.length === 0) {
+            const fallbackSeason = nflStateData.season || '2025';
+            if (selectedSeason !== fallbackSeason) setSelectedSeason(fallbackSeason);
+          }
         }
 
       } catch (err) {
@@ -251,7 +255,7 @@ export const LeagueProvider = ({ children }) => {
     };
 
     fetchAllLeagueData();
-  }, [leagueId, allPlayersData, nflStateData, selectedSeason, seasonChangeCounter]); // Effect dependencies
+  }, [leagueId, allPlayersData, nflStateData, selectedSeason]); // Effect dependencies
 
   // Change league ID
   const changeLeagueId = useCallback((id) => {
@@ -267,27 +271,29 @@ export const LeagueProvider = ({ children }) => {
     console.log('Changing season to:', season);
     const newLeagueIdForSeason = seasonLeagueIds[season];
     
-    // Increment the season change counter to force a refresh
-    setSeasonChangeCounter(prev => prev + 1);
-    
-    // Set the selected season first
-    setSelectedSeason(season);
-
-    // Clear data and set loading to true for a clean transition
+    // Set loading true for immediate feedback while data fetches
     setLoading(true);
+    
+    // Clear data for a clean transition
     setMatchups([]);
     setRosters([]);
     setUsers([]);
     setLeague(null);
     
-    // If the league ID is different, update it to trigger the main useEffect
+    // Set the selected season. This will trigger the main useEffect if it's a new season.
+    setSelectedSeason(season);
+    
+    // If the league ID for the new season is different from the current leagueId,
+    // update leagueId. This will also trigger the main useEffect.
     if (newLeagueIdForSeason !== leagueId) {
       console.log(`Updating league ID from ${leagueId} to ${newLeagueIdForSeason} for season ${season}`);
       setLeagueId(newLeagueIdForSeason);
     }
     
-    // The main useEffect will handle fetching the new data since selectedSeason and seasonChangeCounter changed
-  }, [seasonLeagueIds, selectedSeason, leagueId]);
+    // The main useEffect will handle fetching the new data since selectedSeason changed
+    // If leagueId is the same, the change to selectedSeason will still trigger the main useEffect
+    // to re-evaluate data fetching (e.g., for caching logic or if matchups depend on selectedSeason).
+  }, [seasonLeagueIds, selectedSeason, leagueId, setLoading, setMatchups, setRosters, setUsers, setLeague, setSelectedSeason, setLeagueId]);
 
 
   // Context value
