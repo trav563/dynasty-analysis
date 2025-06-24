@@ -1,10 +1,13 @@
-import React, { useContext, useMemo } from 'react';
+import React, { useContext, useMemo, useState } from 'react';
 import { LeagueContext } from '../contexts/LeagueContext';
 import { splitRosterByRole } from '../utils/dataUtils';
 import SleeperApiService from '../services/sleeperApi';
+import PlayerTradeHistoryModal from './PlayerTradeHistoryModal';
 
 const TeamRoster = ({ rosterId, week }) => {
   const { rosters, players, matchups, loading } = useContext(LeagueContext);
+  const [selectedPlayer, setSelectedPlayer] = useState(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   const roster = useMemo(() => {
     if (!rosters || !rosterId) return null;
@@ -42,15 +45,20 @@ const TeamRoster = ({ rosterId, week }) => {
     return positionColors[position] || 'bg-gray-100 text-gray-800';
   };
 
+  const handlePlayerClick = (player) => {
+    setSelectedPlayer(player);
+    setIsModalOpen(true);
+  };
+
   const renderPlayerRow = (player, index) => {
     if (!player) return null;
     
     const position = player.position || 'Unknown';
     const team = player.team || '';
     const fullName = `${player.first_name || ''} ${player.last_name || ''}`.trim() || 'Unknown Player';
-    
+
     return (
-      <tr key={player.playerId || index} className="hover:bg-gray-50">
+      <tr key={player.playerId || index} className="hover:bg-gray-50 cursor-pointer" onClick={() => handlePlayerClick(player)}>
         <td className="px-4 py-2 whitespace-nowrap">
           <div className="flex items-center">
             <div className="flex-shrink-0 h-10 w-10">
@@ -96,6 +104,13 @@ const TeamRoster = ({ rosterId, week }) => {
   }
 
   return (
+    <>
+      {selectedPlayer && isModalOpen && (
+        <PlayerTradeHistoryModal 
+          player={selectedPlayer}
+          onClose={() => setIsModalOpen(false)}
+        />
+      )}
     <div className="bg-white shadow overflow-hidden sm:rounded-lg">
       <div className="px-4 py-5 sm:px-6 bg-gray-800 text-white">
         <h3 className="text-lg leading-6 font-medium">Team Roster</h3>
@@ -172,6 +187,7 @@ const TeamRoster = ({ rosterId, week }) => {
         </div>
       </div>
     </div>
+    </>
   );
 };
 

@@ -124,23 +124,62 @@ const SleeperApiService = {
   },
 
   /**
-   * Get league transactions
+   * Get league transactions for a specific week
    * @param {string} leagueId - The Sleeper league ID
-   * @param {number} week - The week number (optional)
-   * @returns {Promise} - Promise with transactions data
+   * @param {number} week - The week number
+   * @returns {Promise} - Promise with transactions data for the specified week
    */
-  getTransactions: async (leagueId, week = null) => {
+  getTransactionsForWeek: async (leagueId, week) => {
     try {
       await delay(300); // Add delay to prevent rate limiting
-      const url = week 
-        ? `${BASE_URL}/league/${leagueId}/transactions/${week}` 
-        : `${BASE_URL}/league/${leagueId}/transactions`;
-      
+      const url = `${BASE_URL}/league/${leagueId}/transactions/${week}`;
       const response = await axios.get(url);
       return response.data;
     } catch (error) {
-      console.error('Error fetching transactions:', error);
+      console.error(`Error fetching transactions for week ${week}:`, error);
       throw error;
+    }
+  },
+
+  /**
+   * Get all league transactions for all weeks (1-18)
+   * @param {string} leagueId - The Sleeper league ID
+   * @param {number} week - The week number (optional)
+   * @returns {Promise} - Promise with all transactions data
+   */
+  getTransactions: async (leagueId, week = null) => {
+    // If a specific week is requested, use the weekly endpoint
+    if (week) {
+      return SleeperApiService.getTransactionsForWeek(leagueId, week);
+    }
+
+    try {
+      // The bulk endpoint does not exist, but this is how you would ideally try it first.
+      // Since we know it 404s, we'll go straight to the fallback for this implementation.
+      // In a real-world scenario with a working bulk endpoint, you'd do:
+      // const response = await axios.get(`${BASE_URL}/league/${leagueId}/transactions`);
+      // return response.data;
+      // For now, we simulate the failure to trigger the fallback.
+      throw { response: { status: 404 } };
+    } catch (error) {
+      if (error.response && error.response.status === 404) {
+        // Fallback to fetching all weeks in parallel
+        console.log(`Bulk transaction fetch for league ${leagueId} failed. Falling back to parallel weekly fetch.`);
+        const maxWeeks = 18;
+        const weekPromises = Array.from({ length: maxWeeks }, (_, i) =>
+          SleeperApiService.getTransactionsForWeek(leagueId, i + 1).catch(e => {
+            // If a single week fails (e.g., 404), return an empty array to not fail the whole batch
+            if (e.response && e.response.status === 404) return [];
+            console.error(`Error fetching transactions for league ${leagueId}, week ${i + 1}:`, e.message);
+            return [];
+          })
+        );
+        const weeklyTransactionsArrays = await Promise.all(weekPromises);
+        return weeklyTransactionsArrays.flat();
+      } else {
+        console.error('Error fetching all transactions:', error);
+        throw error;
+      }
     }
   },
 

@@ -1,4 +1,4 @@
-import React, { useContext, useMemo, useState } from 'react';
+import React, { useContext, useMemo, useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { LeagueContext } from '../contexts/LeagueContext';
 import SeasonSelector from '../components/SeasonSelector';
@@ -6,11 +6,16 @@ import TeamRoster from '../components/TeamRoster';
 import TeamStats from '../components/TeamStats';
 import TeamPerformanceChart from '../components/TeamPerformanceChart';
 import SleeperApiService from '../services/sleeperApi';
+import { loadFromCache, saveToCache } from '../utils/cacheUtils';
 
 const TeamDetails = () => {
   const { rosterId } = useParams();
-  const { rosters, users, matchups, loading, error, league, selectedSeason, nflState } = useContext(LeagueContext);
+  const { 
+    rosters, users, matchups, loading, error, league, 
+    selectedSeason, nflState, seasonLeagueIds 
+  } = useContext(LeagueContext);
   const [selectedWeek, setSelectedWeek] = useState(1);
+  const [allTimeRecord, setAllTimeRecord] = useState(null);
   
   // Check if we're viewing a future season with no matchups
   const isFutureSeason = nflState && selectedSeason && parseInt(selectedSeason) > parseInt(nflState.season);
@@ -31,6 +36,45 @@ const TeamDetails = () => {
       user,
     };
   }, [rosters, users, rosterId]);
+
+  // Fetch all-time record
+  useEffect(() => {
+    const fetchAllTimeRecord = async () => {
+      if (!seasonLeagueIds || !rosterData || Object.keys(seasonLeagueIds).length <= 1) {
+        setAllTimeRecord(null);
+        return;
+      }
+
+      let totalWins = 0;
+      let totalLosses = 0;
+      let totalTies = 0;
+
+      const ownerId = rosterData.roster.owner_id;
+
+      for (const season in seasonLeagueIds) {
+        const histLeagueId = seasonLeagueIds[season];
+        try {
+          let histRosters = loadFromCache('rosters', histLeagueId, season);
+          if (!histRosters) {
+            histRosters = await SleeperApiService.getLeagueRosters(histLeagueId);
+            saveToCache('rosters', histLeagueId, season, histRosters);
+          }
+          
+          const teamRoster = histRosters.find(r => r.owner_id === ownerId);
+          if (teamRoster && teamRoster.settings) {
+            totalWins += teamRoster.settings.wins || 0;
+            totalLosses += teamRoster.settings.losses || 0;
+            totalTies += teamRoster.settings.ties || 0;
+          }
+        } catch (e) {
+          console.error(`Could not fetch rosters for league ${histLeagueId}`, e);
+        }
+      }
+      setAllTimeRecord({ wins: totalWins, losses: totalLosses, ties: totalTies });
+    };
+
+    fetchAllTimeRecord();
+  }, [seasonLeagueIds, rosterData]);
 
   // Get all available weeks from matchups
   const availableWeeks = useMemo(() => {
@@ -119,12 +163,17 @@ const TeamDetails = () => {
               {roster.settings && (
                 <>
                   <div className="bg-gray-100 px-3 py-1 rounded-md text-sm">
-                    <span className="font-medium">Record:</span> {roster.settings.wins}-{roster.settings.losses}{roster.settings.ties > 0 ? `-${roster.settings.ties}` : ''}
+                    <span className="font-medium">Season Record:</span> {roster.settings.wins}-{roster.settings.losses}{roster.settings.ties > 0 ? `-${roster.settings.ties}` : ''}
                   </div>
                   <div className="bg-gray-100 px-3 py-1 rounded-md text-sm">
                     <span className="font-medium">Points For:</span> {roster.settings.fpts?.toFixed(2) || 0}
                   </div>
                 </>
+              )}
+              {allTimeRecord && (
+                <div className="bg-blue-100 px-3 py-1 rounded-md text-sm">
+                  <span className="font-medium">All-Time Record:</span> {allTimeRecord.wins}-{allTimeRecord.losses}{allTimeRecord.ties > 0 ? `-${allTimeRecord.ties}` : ''}
+                </div>
               )}
             </div>
           </div>

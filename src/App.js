@@ -7,7 +7,7 @@ import TeamDetails from './pages/TeamDetails';
 function App() {
   return (
     <LeagueProvider>
-      <Router basename="/dynasty-analysis">
+      <Router>
         <div className="min-h-screen bg-gray-100">
           <Routes>
             <Route path="/" element={<Dashboard />} />

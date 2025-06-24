@@ -22,6 +22,9 @@ export const LeagueProvider = ({ children }) => {
   const [selectedSeason, setSelectedSeason] = useState('2025'); // Default to 2025
   const [seasonLeagueIds, setSeasonLeagueIds] = useState({});
   
+  // Store historical data for each season
+  const [historicalData, setHistoricalData] = useState({});
+  
   // Global, non-league-specific data
   const [allPlayersData, setAllPlayersData] = useState(null);
   const [nflStateData, setNflStateData] = useState(null);
@@ -53,6 +56,64 @@ export const LeagueProvider = ({ children }) => {
         setError(prev => prev || 'Failed to fetch all players data');
       });
   }, []);
+
+  // Function to fetch and store historical data for a season
+  const fetchHistoricalData = useCallback(async (season, leagueId) => {
+    if (!season || !leagueId) return null;
+    
+    // Check if we already have this data
+    if (historicalData[season] && historicalData[season].league && historicalData[season].rosters) {
+      return historicalData[season];
+    }
+    
+    try {
+      const shouldUseCacheForSeason = shouldUseCache(season, nflStateData?.season);
+      
+      // Try to load from cache first
+      let leagueData = shouldUseCacheForSeason ? loadFromCache('league', leagueId, season) : null;
+      let rostersData = shouldUseCacheForSeason ? loadFromCache('rosters', leagueId, season) : null;
+      let usersData = shouldUseCacheForSeason ? loadFromCache('users', leagueId, season) : null;
+      
+      // If not in cache, fetch from API
+      if (!leagueData) {
+        leagueData = await SleeperApiService.getLeague(leagueId);
+        if (shouldUseCacheForSeason) {
+          saveToCache('league', leagueId, season, leagueData);
+        }
+      }
+      
+      if (!rostersData) {
+        rostersData = await SleeperApiService.getLeagueRosters(leagueId);
+        if (shouldUseCacheForSeason) {
+          saveToCache('rosters', leagueId, season, rostersData);
+        }
+      }
+      
+      if (!usersData) {
+        usersData = await SleeperApiService.getLeagueUsers(leagueId);
+        if (shouldUseCacheForSeason) {
+          saveToCache('users', leagueId, season, usersData);
+        }
+      }
+      
+      const seasonData = {
+        league: leagueData,
+        rosters: rostersData,
+        users: usersData
+      };
+      
+      // Update historical data state
+      setHistoricalData(prev => ({
+        ...prev,
+        [season]: seasonData
+      }));
+      
+      return seasonData;
+    } catch (error) {
+      console.error(`Error fetching historical data for season ${season}:`, error);
+      return null;
+    }
+  }, [historicalData, nflStateData]);
 
   // Main data fetching effect: runs when leagueId changes or global data is ready
   useEffect(() => {
@@ -310,6 +371,9 @@ export const LeagueProvider = ({ children }) => {
     nflState: nflStateData, // Provide nflStateData as 'nflState'
     changeLeagueId,
     changeSeason,
+    historicalData,
+    fetchHistoricalData,
+    seasonLeagueIds,
   };
 
   return (

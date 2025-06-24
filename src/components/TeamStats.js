@@ -1,7 +1,7 @@
 import React, { useContext, useMemo } from 'react';
 import { LeagueContext } from '../contexts/LeagueContext';
 import { calculateAveragePoints, calculateWinRate, formatPoints, formatPercentage, getWinRateColor } from '../utils/dataUtils';
-import SleeperApiService from '../services/sleeperApi';
+
 
 const TeamStats = ({ rosterId }) => {
   const { rosters, users, matchups, loading, league } = useContext(LeagueContext);
@@ -16,34 +16,35 @@ const TeamStats = ({ rosterId }) => {
     return users.find(u => u.user_id === roster.owner_id);
   }, [users, roster]);
 
-  const teamMatchups = useMemo(() => {
-    if (!matchups || !rosterId) return [];
-    return matchups.filter(m => m.roster_id === parseInt(rosterId));
-  }, [matchups, rosterId]);
-
   // Calculate regular season and playoff stats
   const stats = useMemo(() => {
-    if (!teamMatchups.length || !league) return null;
+    if (!matchups.length || !league || !rosterId) return null;
 
     // Determine playoff weeks based on league settings
     const playoffStartWeek = league.settings?.playoff_week_start || 15;
     
-    const regularSeasonMatchups = teamMatchups.filter(m => m.week < playoffStartWeek);
-    const playoffMatchups = teamMatchups.filter(m => m.week >= playoffStartWeek);
+    // For win rate, we need all matchups to find opponents
+    const allRegularSeasonMatchups = matchups.filter(m => m.week < playoffStartWeek);
+    const allPlayoffMatchups = matchups.filter(m => m.week >= playoffStartWeek);
     
-    const regularSeasonWinRate = calculateWinRate(regularSeasonMatchups, rosterId);
-    const playoffWinRate = calculateWinRate(playoffMatchups, rosterId);
-    const overallWinRate = calculateWinRate(teamMatchups, rosterId);
+    const regularSeasonWinRate = calculateWinRate(allRegularSeasonMatchups, rosterId);
+    const playoffWinRate = calculateWinRate(allPlayoffMatchups, rosterId);
+    const overallWinRate = calculateWinRate(matchups, rosterId);
     
-    const avgPointsRegular = calculateAveragePoints(regularSeasonMatchups, rosterId);
-    const avgPointsPlayoff = calculateAveragePoints(playoffMatchups, rosterId);
+    // For point calculations, we only need the specific team's matchups
+    const teamMatchups = matchups.filter(m => m.roster_id === parseInt(rosterId));
+    const teamRegularSeasonMatchups = teamMatchups.filter(m => m.week < playoffStartWeek);
+    const teamPlayoffMatchups = teamMatchups.filter(m => m.week >= playoffStartWeek);
+
+    const avgPointsRegular = calculateAveragePoints(teamRegularSeasonMatchups, rosterId);
+    const avgPointsPlayoff = calculateAveragePoints(teamPlayoffMatchups, rosterId);
     const avgPointsOverall = calculateAveragePoints(teamMatchups, rosterId);
     
     // Calculate highest and lowest scores
     const scores = teamMatchups.map(m => m.points || 0);
     const highestScore = scores.length ? Math.max(...scores) : 0;
     const lowestScore = scores.length ? Math.min(...scores) : 0;
-    
+
     return {
       regularSeasonWinRate,
       playoffWinRate,
@@ -54,10 +55,10 @@ const TeamStats = ({ rosterId }) => {
       highestScore,
       lowestScore,
       totalGames: teamMatchups.length,
-      regularSeasonGames: regularSeasonMatchups.length,
-      playoffGames: playoffMatchups.length,
+      regularSeasonGames: teamRegularSeasonMatchups.length,
+      playoffGames: teamPlayoffMatchups.length,
     };
-  }, [teamMatchups, league, rosterId]);
+  }, [matchups, league, rosterId]);
 
   if (loading) {
     return <div className="p-4 text-center">Loading team stats...</div>;
@@ -73,21 +74,7 @@ const TeamStats = ({ rosterId }) => {
 
   return (
     <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-      <div className="px-4 py-5 sm:px-6 bg-gray-800 text-white">
-        <div className="flex items-center">
-          {user.avatar && (
-            <img 
-              src={SleeperApiService.getAvatarUrl(user.avatar)} 
-              alt={`${user.display_name} avatar`}
-              className="w-12 h-12 rounded-full mr-4"
-            />
-          )}
-          <div>
-            <h3 className="text-lg leading-6 font-medium">{user.display_name}</h3>
-            <p className="mt-1 max-w-2xl text-sm">Team Performance Stats</p>
-          </div>
-        </div>
-      </div>
+      <div className="px-4 py-5 sm:px-6 bg-gray-800 text-white"><h3 className="text-lg leading-6 font-medium">Team Performance Stats</h3></div>
       
       <div className="border-t border-gray-200 px-4 py-5 sm:p-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -113,6 +100,10 @@ const TeamStats = ({ rosterId }) => {
                       backgroundColor: getWinRateColor(stats.overallWinRate)
                     }}
                   ></div>
+                </div>
+                {/* Debug info */}
+                <div className="text-xs text-gray-500 mt-1">
+                  Win Rate: {stats.overallWinRate.toFixed(2)}% (Width: {stats.overallWinRate}%)
                 </div>
               </div>
               
@@ -160,6 +151,10 @@ const TeamStats = ({ rosterId }) => {
                     }}
                   ></div>
                 </div>
+                {/* Debug info */}
+                <div className="text-xs text-gray-500 mt-1">
+                  Win Rate: {stats.regularSeasonWinRate.toFixed(2)}% (Width: {stats.regularSeasonWinRate}%)
+                </div>
               </div>
               
               <div className="grid grid-cols-2 gap-4">
@@ -197,6 +192,10 @@ const TeamStats = ({ rosterId }) => {
                       backgroundColor: getWinRateColor(stats.playoffWinRate)
                     }}
                   ></div>
+                </div>
+                {/* Debug info */}
+                <div className="text-xs text-gray-500 mt-1">
+                  Win Rate: {stats.playoffWinRate.toFixed(2)}% (Width: {stats.playoffWinRate}%)
                 </div>
               </div>
               

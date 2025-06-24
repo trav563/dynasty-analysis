@@ -324,3 +324,41 @@ export const getWinRateColor = (percentage) => {
   
   return `rgb(${red}, ${green}, ${blue})`;
 };
+
+/**
+ * Calculate all-time record for a team across seasons
+ * @param {Object} seasonData - Object containing data for each season
+ * @param {string} rosterId - The roster ID to calculate for
+ * @returns {Object} - Object with wins, losses, ties, and win percentage
+ */
+export const calculateAllTimeRecord = (seasonData, rosterId) => {
+  if (!seasonData || !rosterId) {
+    return { wins: 0, losses: 0, ties: 0, winPercentage: 0 };
+  }
+  
+  let totalWins = 0;
+  let totalLosses = 0;
+  let totalTies = 0;
+  
+  // Iterate through each season's data
+  Object.values(seasonData).forEach(season => {
+    if (!season.rosters) return;
+    
+    const roster = season.rosters.find(r => r.roster_id === parseInt(rosterId));
+    if (!roster || !roster.settings) return;
+    
+    totalWins += roster.settings.wins || 0;
+    totalLosses += roster.settings.losses || 0;
+    totalTies += roster.settings.ties || 0;
+  });
+  
+  const totalGames = totalWins + totalLosses + totalTies;
+  const winPercentage = totalGames > 0 ? (totalWins / totalGames) * 100 : 0;
+  
+  return {
+    wins: totalWins,
+    losses: totalLosses,
+    ties: totalTies,
+    winPercentage
+  };
+};
