@@ -227,6 +227,38 @@ const SleeperApiService = {
   getPlayerThumbnailUrl: (playerId) => {
     if (!playerId) return null;
     return `https://sleepercdn.com/content/nfl/players/thumb/${playerId}.jpg`;
+  },
+
+  /**
+   * Get drafts for a league
+   * @param {string} leagueId - The Sleeper league ID
+   * @returns {Promise} - Promise with league drafts data
+   */
+  getLeagueDrafts: async (leagueId) => {
+    try {
+      await delay(300); // Add delay to prevent rate limiting
+      const response = await axios.get(`${BASE_URL}/league/${leagueId}/drafts`);
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching league drafts:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get picks for a draft
+   * @param {string} draftId - The Sleeper draft ID
+   * @returns {Promise} - Promise with draft picks data
+   */
+  getDraftPicks: async (draftId) => {
+    try {
+      await delay(300); // Add delay to prevent rate limiting
+      const response = await axios.get(`${BASE_URL}/draft/${draftId}/picks`);
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching draft picks:', error);
+      throw error;
+    }
   }
 };
 
