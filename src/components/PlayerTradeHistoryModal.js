@@ -31,155 +31,174 @@ const PlayerTradeHistoryModal = ({ player, onClose }) => {
     return user?.display_name || `Roster ${rosterId}`;
   }, []);
 
-  // Helper to format draft pick details
-  const formatDraftPick = (pick, histRosters, histUsers, seasonDraftsData) => {
-    const originalOwnerName = pick.original_owner_id ? getManagerName(pick.original_owner_id, histRosters, histUsers) : 'Unknown';
-    const currentOwnerName = pick.roster_id ? getManagerName(pick.roster_id, histRosters, histUsers) : 'Unknown';
-    const round = pick.round || '?';
-    const year = pick.season || 'Unknown Year';
-    const pickNumber = pick.pick || ''; // Sometimes pick number is not available directly
-
-    let pickString = `${year} Round ${round}`;
-
-    // Check if it's a past draft pick and we have player data
-    // Only try to find player if it's a past season and we have draft_id and pick number
-    if (parseInt(year) < new Date().getFullYear() && pick.draft_id && pick.round && pick.pick) {
-      console.log(`Attempting to find player for draft pick: Year ${year}, Round ${pick.round}, Pick ${pick.pick}, Draft ID ${pick.draft_id}`);
-      const draftPicksForThisDraft = seasonDraftsData[pick.draft_id];
-      if (draftPicksForThisDraft) {
-        console.log(`Found draft data for draft ID ${pick.draft_id}. Total picks: ${draftPicksForThisDraft.length}`);
-        console.log(`Sample draft pick data:`, draftPicksForThisDraft[0]);
-        
-        // Find the pick by matching round and the pick number within the round (draft_slot)
-        const draftedPlayerPick = draftPicksForThisDraft.find(
-          draftedPick => draftedPick.round === pick.round && draftedPick.draft_slot === pick.pick
-        );
-        
-        console.log(`Match result:`, draftedPlayerPick ? 
-          `Found match! Player ID: ${draftedPlayerPick.player_id}` : 
-          `No match found for Round ${pick.round}, Pick ${pick.pick}`);
-        if (draftedPlayerPick && draftedPlayerPick.player_id) {
-          const draftedPlayerName = getPlayerNameById(draftedPlayerPick.player_id);
-          pickString = `${draftedPlayerName} (${year} Round ${round}`;
-          if (pickNumber) { // Add pick number if available, e.g., (2023 Round 1 Pick 10)
-            pickString += ` Pick ${pickNumber}`;
+  useEffect(() => {
+    // These functions depend on the useCallback helpers and data fetched inside the effect.
+    // Defining them here makes them part of the effect's closure and avoids dependency array issues.
+    const formatDraftPick = (pick, histRosters, histUsers, seasonDraftsData) => {
+      const originalOwnerName = pick.original_owner_id ? getManagerName(pick.original_owner_id, histRosters, histUsers) : 'Unknown';
+      const currentOwnerName = pick.roster_id ? getManagerName(pick.roster_id, histRosters, histUsers) : 'Unknown';
+      const round = pick.round || '?';
+      const year = pick.season || 'Unknown Year';
+      const pickNumber = pick.pick || ''; // This is the overall pick number
+  
+      let pickString = `${year} Round ${round}`;
+  
+      // Check if it's a past draft pick and we have player data
+      if (parseInt(year) < new Date().getFullYear() && pick.draft_id && pick.pick) {
+        const draftPicksForThisDraft = seasonDraftsData[pick.draft_id];
+        if (draftPicksForThisDraft) {
+          // Find the pick by matching the overall pick number. The 'pick' property on a traded
+          // pick object from a transaction appears to represent the overall pick number ('pick_no').
+          const draftedPlayerPick = draftPicksForThisDraft.find(
+            draftedPick => draftedPick.pick_no === pick.pick
+          );
+          if (draftedPlayerPick && draftedPlayerPick.player_id) {
+            const draftedPlayerName = getPlayerNameById(draftedPlayerPick.player_id);
+            // Use the round from the completed pick for accuracy
+            const actualRound = draftedPlayerPick.round || round;
+            pickString = `${draftedPlayerName} (${year} Round ${actualRound} Pick ${draftedPlayerPick.draft_slot})`;
+            
+            // Add ownership narrative
+            if (originalOwnerName !== currentOwnerName) {
+              pickString += ` (orig. ${originalOwnerName} to ${currentOwnerName})`;
+            } else {
+              pickString += ` (owned by ${currentOwnerName})`;
+            }
+            return pickString;
           }
-          pickString += ')'; // Close the parenthesis
-          
-          // Add ownership narrative
-          if (originalOwnerName !== currentOwnerName) {
-            pickString += ` (orig. ${originalOwnerName} to ${currentOwnerName})`;
-          } else {
-            pickString += ` (owned by ${currentOwnerName})`;
-          }
-          return pickString;
         }
       }
-    }
-    
-    if (pickNumber) {
-        pickString += ` Pick ${pickNumber}`;
-    }
-    if (originalOwnerName !== currentOwnerName) {
-        pickString += ` (orig. ${originalOwnerName} to ${currentOwnerName})`;
-    } else {
-        pickString += ` (owned by ${currentOwnerName})`;
-    }
-    return pickString;
-  };
-
-  // Create a narrative for the transaction
-  const getTransactionNarrative = (transaction, playerId, histRosters, histUsers, seasonDraftsData) => {
-    let fromTeam = '';
-    let toTeam = '';
-    let description = '';
-    
-    const addedToRosterId = transaction.adds?.[playerId];
-    const droppedFromRosterId = transaction.drops?.[playerId];
-    
-    // Identify other players involved
-    const otherPlayersInvolved = [];
-    const draftPicksInvolved = [];
-
-    // Identify other players involved in the transaction
-    for (const pId in transaction.adds) {
-      if (pId !== playerId) {
-        otherPlayersInvolved.push(getPlayerNameById(pId));
+      
+      // Fallback for future picks or if player not found
+      if (pickNumber) {
+          pickString += ` Pick ${pickNumber}`;
       }
-    }
-    for (const pId in transaction.drops) {
-      if (pId !== playerId) {
-        // Only add if not already in adds (to avoid duplicates for players swapped)
-        if (!transaction.adds || !transaction.adds[pId]) {
+      if (originalOwnerName !== currentOwnerName) {
+          pickString += ` (orig. ${originalOwnerName} to ${currentOwnerName})`;
+      } else {
+          pickString += ` (owned by ${currentOwnerName})`;
+      }
+      return pickString;
+    };
+
+    const getTransactionNarrative = (transaction, playerId, histRosters, histUsers, seasonDraftsData) => {
+      let fromTeam = '';
+      let toTeam = '';
+      let description = '';
+      
+      const addedToRosterId = transaction.adds?.[playerId];
+      const droppedFromRosterId = transaction.drops?.[playerId];
+      
+      // Identify other players involved
+      const otherPlayersInvolved = [];
+      const draftPicksInvolved = [];
+  
+      // Identify other players involved in the transaction
+      for (const pId in transaction.adds) {
+        if (pId !== playerId) {
           otherPlayersInvolved.push(getPlayerNameById(pId));
         }
       }
-    }
-
-    // Identify draft picks involved
-    if (transaction.draft_picks && transaction.draft_picks.length > 0) {
-      transaction.draft_picks.forEach(pick => {
-        draftPicksInvolved.push(formatDraftPick(pick, histRosters, histUsers, seasonDraftsData)); // Pass seasonDraftsData
-      });
-    }
-
-    // Function to add additional info to the base description
-    const baseDescription = (base) => {
-      let additionalInfo = [];
-      if (otherPlayersInvolved.length > 0) {
-        additionalInfo.push(`Other players: ${otherPlayersInvolved.join(', ')}`);
+      for (const pId in transaction.drops) {
+        if (pId !== playerId) {
+          // Only add if not already in adds (to avoid duplicates for players swapped)
+          if (!transaction.adds || !transaction.adds[pId]) {
+            otherPlayersInvolved.push(getPlayerNameById(pId));
+          }
+        }
       }
-      if (draftPicksInvolved.length > 0) {
-        additionalInfo.push(`Draft picks: ${draftPicksInvolved.join('; ')}`);
+  
+      // Identify draft picks involved
+      if (transaction.draft_picks && transaction.draft_picks.length > 0) {
+        transaction.draft_picks.forEach(pick => {
+          draftPicksInvolved.push(formatDraftPick(pick, histRosters, histUsers, seasonDraftsData)); // Pass seasonDraftsData
+        });
       }
-      
-      if (additionalInfo.length > 0) {
-        return `${base}. ${additionalInfo.join('. ')}.`;
-      }
-      return base;
-    };
-    
-    if (transaction.type === 'trade') {
-      if (addedToRosterId) {
-        toTeam = getManagerName(addedToRosterId, histRosters, histUsers);
+  
+      // Function to add additional info to the base description
+      const baseDescription = (base) => {
+        let additionalInfo = [];
+        if (otherPlayersInvolved.length > 0) {
+          additionalInfo.push(`Other players: ${otherPlayersInvolved.join(', ')}`);
+        }
+        if (draftPicksInvolved.length > 0) {
+          additionalInfo.push(`Draft picks: ${draftPicksInvolved.join('; ')}`);
+        }
         
-        if (droppedFromRosterId) {
-          fromTeam = getManagerName(droppedFromRosterId, histRosters, histUsers);
+        if (additionalInfo.length > 0) {
+          return `${base}. ${additionalInfo.join('. ')}.`;
+        }
+        return base;
+      };
+      
+      if (transaction.type === 'trade') {
+        if (addedToRosterId) {
+          toTeam = getManagerName(addedToRosterId, histRosters, histUsers);
           
-          // Check if there were other players involved in the trade
-          const otherPlayersTraded = Object.keys(transaction.adds || {}).length + 
-                                    Object.keys(transaction.drops || {}).length - 2; // Subtract 2 for this player's add and drop
-          
-          if (otherPlayersTraded > 0) {
-            description = `Traded from ${fromTeam} to ${toTeam} along with ${otherPlayersTraded} other player(s)/pick(s)`;
+          if (droppedFromRosterId) {
+            fromTeam = getManagerName(droppedFromRosterId, histRosters, histUsers);
+            
+            // Check if there were other players involved in the trade
+            const otherPlayersTraded = Object.keys(transaction.adds || {}).length + 
+                                      Object.keys(transaction.drops || {}).length - 2; // Subtract 2 for this player's add and drop
+            
+            if (otherPlayersTraded > 0) {
+              description = `Traded from ${fromTeam} to ${toTeam} along with ${otherPlayersTraded} other player(s)/pick(s)`;
+            } else {
+              description = `Traded from ${fromTeam} to ${toTeam}`;
+            }
+            
+            // Add draft pick information if available
+            if (transaction.draft_picks && transaction.draft_picks.length > 0) {
+              description += ` (trade included ${transaction.draft_picks.length} draft pick(s))`;
+            }
           } else {
-            description = `Traded from ${fromTeam} to ${toTeam}`;
-          }
-          
-          // Add draft pick information if available
-          if (transaction.draft_picks && transaction.draft_picks.length > 0) {
-            description += ` (trade included ${transaction.draft_picks.length} draft pick(s))`;
-          }
-        } else {
-          // This case implies player was added in a trade, but the 'from' team isn't clear from 'drops'
-          // This might happen in complex multi-team trades or if the player was a draft pick
-          
-          // Try to determine the source team from the roster_ids
-          let sourceTeam = 'Unknown';
-          if (transaction.roster_ids && transaction.roster_ids.length > 1) {
-            // Find a roster ID that's not the destination roster
-            const otherRosterId = transaction.roster_ids.find(id => id !== addedToRosterId);
-            if (otherRosterId) {
-              sourceTeam = getManagerName(otherRosterId, histRosters, histUsers);
-              fromTeam = sourceTeam;
-              description = `Acquired by ${toTeam} in a trade with ${sourceTeam}`;
+            // This case implies player was added in a trade, but the 'from' team isn't clear from 'drops'
+            // This might happen in complex multi-team trades or if the player was a draft pick
+            
+            // Try to determine the source team from the roster_ids
+            let sourceTeam = 'Unknown';
+            if (transaction.roster_ids && transaction.roster_ids.length > 1) {
+              // Find a roster ID that's not the destination roster
+              const otherRosterId = transaction.roster_ids.find(id => id !== addedToRosterId);
+              if (otherRosterId) {
+                sourceTeam = getManagerName(otherRosterId, histRosters, histUsers);
+                fromTeam = sourceTeam;
+                description = `Acquired by ${toTeam} in a trade with ${sourceTeam}`;
+              } else {
+                fromTeam = 'Unknown';
+                description = `Acquired by ${toTeam} via trade (source not explicitly recorded)`;
+              }
             } else {
               fromTeam = 'Unknown';
               description = `Acquired by ${toTeam} via trade (source not explicitly recorded)`;
             }
+            
+            // Add draft pick information if available
+            if (transaction.draft_picks && transaction.draft_picks.length > 0) {
+              description += ` (trade included ${transaction.draft_picks.length} draft pick(s))`;
+            }
+          }
+        } else if (droppedFromRosterId) {
+          // Player was dropped in a trade but not explicitly added to another team in this transaction
+          fromTeam = getManagerName(droppedFromRosterId, histRosters, histUsers);
+          
+          // Try to determine the destination team from the roster_ids
+          let destinationTeam = 'Unknown';
+          if (transaction.roster_ids && transaction.roster_ids.length > 1) {
+            // Find a roster ID that's not the source roster
+            const otherRosterId = transaction.roster_ids.find(id => id !== droppedFromRosterId);
+            if (otherRosterId) {
+              destinationTeam = getManagerName(otherRosterId, histRosters, histUsers);
+              toTeam = destinationTeam;
+              description = `Traded from ${fromTeam} to ${destinationTeam}`;
+            } else {
+              toTeam = 'Unknown';
+              description = `Traded away by ${fromTeam} (destination not explicitly recorded)`;
+            }
           } else {
-            fromTeam = 'Unknown';
-            description = `Acquired by ${toTeam} via trade (source not explicitly recorded)`;
+            toTeam = 'Unknown';
+            description = `Traded away by ${fromTeam} (destination not explicitly recorded)`;
           }
           
           // Add draft pick information if available
@@ -187,105 +206,77 @@ const PlayerTradeHistoryModal = ({ player, onClose }) => {
             description += ` (trade included ${transaction.draft_picks.length} draft pick(s))`;
           }
         }
-      } else if (droppedFromRosterId) {
-        // Player was dropped in a trade but not explicitly added to another team in this transaction
-        fromTeam = getManagerName(droppedFromRosterId, histRosters, histUsers);
-        
-        // Try to determine the destination team from the roster_ids
-        let destinationTeam = 'Unknown';
-        if (transaction.roster_ids && transaction.roster_ids.length > 1) {
-          // Find a roster ID that's not the source roster
-          const otherRosterId = transaction.roster_ids.find(id => id !== droppedFromRosterId);
-          if (otherRosterId) {
-            destinationTeam = getManagerName(otherRosterId, histRosters, histUsers);
-            toTeam = destinationTeam;
-            description = `Traded from ${fromTeam} to ${destinationTeam}`;
+      } else if (transaction.type === 'waiver') {
+        if (addedToRosterId) {
+          toTeam = getManagerName(addedToRosterId, histRosters, histUsers);
+          fromTeam = 'Waivers';
+          
+          // Add FAAB amount if available
+          if (transaction.settings && transaction.settings.waiver_bid !== undefined) {
+            const faabAmount = transaction.settings.waiver_bid;
+            description = `Claimed off waivers by ${toTeam} for $${faabAmount} FAAB`;
           } else {
-            toTeam = 'Unknown';
-            description = `Traded away by ${fromTeam} (destination not explicitly recorded)`;
+            description = `Claimed off waivers by ${toTeam}`;
           }
-        } else {
-          toTeam = 'Unknown';
-          description = `Traded away by ${fromTeam} (destination not explicitly recorded)`;
+          
+          // Add waiver priority if available
+          if (transaction.settings && transaction.settings.waiver_priority !== undefined) {
+            const waiverPriority = transaction.settings.waiver_priority;
+            description += ` (waiver priority: ${waiverPriority})`;
+          }
+        } else if (droppedFromRosterId) {
+          fromTeam = getManagerName(droppedFromRosterId, histRosters, histUsers);
+          toTeam = 'Waivers';
+          description = `Waived by ${fromTeam}`;
         }
-        
-        // Add draft pick information if available
-        if (transaction.draft_picks && transaction.draft_picks.length > 0) {
-          description += ` (trade included ${transaction.draft_picks.length} draft pick(s))`;
+      } else if (transaction.type === 'free_agent') {
+        if (addedToRosterId) {
+          toTeam = getManagerName(addedToRosterId, histRosters, histUsers);
+          fromTeam = 'Free Agency';
+          description = `Signed as free agent by ${toTeam}`;
+          
+          // Check if any player was dropped to make room for this signing
+          const droppedPlayers = Object.keys(transaction.drops || {}).length;
+          if (droppedPlayers > 0) {
+            description += ` (${droppedPlayers} player(s) dropped)`;
+          }
+        } else if (droppedFromRosterId) {
+          fromTeam = getManagerName(droppedFromRosterId, histRosters, histUsers);
+          toTeam = 'Free Agency';
+          description = `Released to free agency by ${fromTeam}`;
         }
+      } else if (transaction.type === 'commissioner') {
+        if (addedToRosterId) {
+          toTeam = getManagerName(addedToRosterId, histRosters, histUsers);
+          fromTeam = 'Commissioner';
+          description = `Added to ${toTeam} by commissioner action`;
+        } else if (droppedFromRosterId) {
+          fromTeam = getManagerName(droppedFromRosterId, histRosters, histUsers);
+          toTeam = 'Commissioner';
+          description = `Removed from ${fromTeam} by commissioner action`;
+        }
+      } else if (transaction.type === 'draft') {
+        if (addedToRosterId) {
+          toTeam = getManagerName(addedToRosterId, histRosters, histUsers);
+          fromTeam = 'Draft';
+          
+          // Add draft position information if available
+          if (transaction.metadata && transaction.metadata.pick) {
+            const pick = transaction.metadata.pick;
+            const round = transaction.metadata.round || '?';
+            description = `Drafted by ${toTeam} (Round ${round}, Pick ${pick})`;
+          } else {
+            description = `Drafted by ${toTeam}`;
+          }
+        }
+      } else {
+        // Fallback for unhandled types
+        description = `Involved in a ${transaction.type || 'unknown'} transaction`;
       }
-    } else if (transaction.type === 'waiver') {
-      if (addedToRosterId) {
-        toTeam = getManagerName(addedToRosterId, histRosters, histUsers);
-        fromTeam = 'Waivers';
-        
-        // Add FAAB amount if available
-        if (transaction.settings && transaction.settings.waiver_bid !== undefined) {
-          const faabAmount = transaction.settings.waiver_bid;
-          description = `Claimed off waivers by ${toTeam} for $${faabAmount} FAAB`;
-        } else {
-          description = `Claimed off waivers by ${toTeam}`;
-        }
-        
-        // Add waiver priority if available
-        if (transaction.settings && transaction.settings.waiver_priority !== undefined) {
-          const waiverPriority = transaction.settings.waiver_priority;
-          description += ` (waiver priority: ${waiverPriority})`;
-        }
-      } else if (droppedFromRosterId) {
-        fromTeam = getManagerName(droppedFromRosterId, histRosters, histUsers);
-        toTeam = 'Waivers';
-        description = `Waived by ${fromTeam}`;
-      }
-    } else if (transaction.type === 'free_agent') {
-      if (addedToRosterId) {
-        toTeam = getManagerName(addedToRosterId, histRosters, histUsers);
-        fromTeam = 'Free Agency';
-        description = `Signed as free agent by ${toTeam}`;
-        
-        // Check if any player was dropped to make room for this signing
-        const droppedPlayers = Object.keys(transaction.drops || {}).length;
-        if (droppedPlayers > 0) {
-          description += ` (${droppedPlayers} player(s) dropped)`;
-        }
-      } else if (droppedFromRosterId) {
-        fromTeam = getManagerName(droppedFromRosterId, histRosters, histUsers);
-        toTeam = 'Free Agency';
-        description = `Released to free agency by ${fromTeam}`;
-      }
-    } else if (transaction.type === 'commissioner') {
-      if (addedToRosterId) {
-        toTeam = getManagerName(addedToRosterId, histRosters, histUsers);
-        fromTeam = 'Commissioner';
-        description = `Added to ${toTeam} by commissioner action`;
-      } else if (droppedFromRosterId) {
-        fromTeam = getManagerName(droppedFromRosterId, histRosters, histUsers);
-        toTeam = 'Commissioner';
-        description = `Removed from ${fromTeam} by commissioner action`;
-      }
-    } else if (transaction.type === 'draft') {
-      if (addedToRosterId) {
-        toTeam = getManagerName(addedToRosterId, histRosters, histUsers);
-        fromTeam = 'Draft';
-        
-        // Add draft position information if available
-        if (transaction.metadata && transaction.metadata.pick) {
-          const pick = transaction.metadata.pick;
-          const round = transaction.metadata.round || '?';
-          description = `Drafted by ${toTeam} (Round ${round}, Pick ${pick})`;
-        } else {
-          description = `Drafted by ${toTeam}`;
-        }
-      }
-    } else {
-      // Fallback for unhandled types
-      description = `Involved in a ${transaction.type || 'unknown'} transaction`;
-    }
-    
-    return { fromTeam, toTeam, description: baseDescription(description) };
-  };
+      
+      return { fromTeam, toTeam, description: baseDescription(description) };
+    };
 
-  useEffect(() => {
     const fetchTransactions = async () => {
       if (!player || !player.playerId) {
         setLoading(false);
@@ -441,7 +432,7 @@ const PlayerTradeHistoryModal = ({ player, onClose }) => {
     
     fetchTransactions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [player, seasonLeagueIds, getPlayerName, getPlayerNameById, getManagerName]);
+  }, [player, seasonLeagueIds, getPlayerName, getPlayerNameById, getManagerName]); // Dependencies are correct now
 
 
   // Format transaction date
