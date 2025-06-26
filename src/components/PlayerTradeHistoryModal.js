@@ -342,8 +342,6 @@ const PlayerTradeHistoryModal = ({ player, onClose }) => {
         // Now fetch transactions for each season
         for (const season in seasonLeagueIds) {
           const leagueId = seasonLeagueIds[season];
-          let seasonDraftsData = {}; // Store drafts and their picks for this season
-          let leagueDrafts = []; // Initialize leagueDrafts for this season
           console.log(`  Processing season: ${season}, League ID: ${leagueId}`);
           
           try {
