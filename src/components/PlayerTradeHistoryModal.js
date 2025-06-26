@@ -44,34 +44,29 @@ const PlayerTradeHistoryModal = ({ player, onClose }) => {
       let pickString = `${year} Round ${round}`;
   
       // Check if it's a past draft pick and we have player data
-      if (parseInt(year) < new Date().getFullYear() && pick.pick) {
-        // Find the draft metadata for the pick's season from the master list of all drafts.
-        const draftsForYear = allSeasonsDrafts[year];
-        if (draftsForYear && draftsForYear.length > 0) {
-          // Assuming one main draft per season for simplicity.
-          const targetDraft = draftsForYear[0];
-          const draftPicksForThisDraft = allSeasonsPicks[targetDraft.draft_id];
-          if (draftPicksForThisDraft) {
-            // Find the pick by matching the overall pick number. The 'pick' property on a traded
-            // pick object from a transaction appears to represent the overall pick number ('pick_no').
-            // We use Number() to guard against type mismatches (e.g., '17' vs 17).
-            const draftedPlayerPick = draftPicksForThisDraft.find(
-              draftedPick => Number(draftedPick.pick_no) === Number(pick.pick)
-            );
-            if (draftedPlayerPick && draftedPlayerPick.player_id) {
-              const draftedPlayerName = getPlayerNameById(draftedPlayerPick.player_id);
-              // Use the round from the completed pick for accuracy
-              const actualRound = draftedPlayerPick.round || round;
-              pickString = `${draftedPlayerName} (${year} Round ${actualRound} Pick ${draftedPlayerPick.draft_slot})`;
-              
-              // Add ownership narrative
-              if (originalOwnerName !== currentOwnerName) {
-                pickString += ` (orig. ${originalOwnerName} to ${currentOwnerName})`;
-              } else {
-                pickString += ` (owned by ${currentOwnerName})`;
-              }
-              return pickString;
+      if (parseInt(year) < new Date().getFullYear() && pick.draft_id && pick.pick) { // Ensure it's a past draft and we have a draft_id and pick number
+        // Directly access the completed draft picks using pick.draft_id
+        const draftPicksForThisDraft = allSeasonsPicks[pick.draft_id];
+        if (draftPicksForThisDraft) {
+          // Find the pick by matching the overall pick number. The 'pick' property on a traded
+          // pick object from a transaction appears to represent the overall pick number ('pick_no').
+          // We use Number() to guard against type mismatches (e.g., '17' vs 17).
+          const draftedPlayerPick = draftPicksForThisDraft.find(
+            draftedPick => Number(draftedPick.pick_no) === Number(pick.pick)
+          );
+          if (draftedPlayerPick && draftedPlayerPick.player_id) {
+            const draftedPlayerName = getPlayerNameById(draftedPlayerPick.player_id);
+            // Use the round from the completed pick for accuracy
+            const actualRound = draftedPlayerPick.round || round;
+            pickString = `${draftedPlayerName} (${year} Round ${actualRound} Pick ${draftedPlayerPick.draft_slot})`;
+            
+            // Add ownership narrative
+            if (originalOwnerName !== currentOwnerName) {
+              pickString += ` (orig. ${originalOwnerName} to ${currentOwnerName})`;
+            } else {
+              pickString += ` (owned by ${currentOwnerName})`;
             }
+            return pickString;
           }
         }
       }
