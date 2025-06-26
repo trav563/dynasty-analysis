@@ -31,165 +31,7 @@ const PlayerTradeHistoryModal = ({ player, onClose }) => {
     return user?.display_name || `Roster ${rosterId}`;
   }, []);
 
-  useEffect(() => {
-    const fetchTransactions = async () => {
-      if (!player || !player.playerId) {
-        setLoading(false);
-        return;
-      }
-      
-      setLoading(true);
-      // Determine current year for filtering past/future drafts
-      const currentYear = new Date().getFullYear();
-      
-      console.log(`Fetching transaction history for player ${player.playerId} (${getPlayerName(player)})`);
-      console.log(`Available season league IDs:`, seasonLeagueIds);
-      
-      try {
-        const allTransactions = [];
-        const seenTransactionIds = new Set(); // Track transaction IDs to prevent duplicates
-        
-        // Fetch transactions for each season
-        for (const season in seasonLeagueIds) {
-          const leagueId = seasonLeagueIds[season];
-          let seasonDraftsData = {}; // Store drafts and their picks for this season
-          console.log(`  Processing season: ${season}, League ID: ${leagueId}`);
-          
-          try {
-            // Fetch historical roster and user data for this season
-            let histRosters = loadFromCache('rosters', leagueId, season);
-            if (!histRosters) {
-              histRosters = await SleeperApiService.getLeagueRosters(leagueId);
-              saveToCache('rosters', leagueId, season, histRosters);
-            }
-            
-            let histUsers = loadFromCache('users', leagueId, season);
-            if (!histUsers) {
-              histUsers = await SleeperApiService.getLeagueUsers(leagueId);
-              saveToCache('users', leagueId, season, histUsers);
-            }
-            
-            // Fetch draft data for past seasons
-            if (parseInt(season) < currentYear) { // Only fetch draft picks for past seasons
-              let leagueDrafts = loadFromCache('drafts', leagueId, season);
-              if (!leagueDrafts) {
-                try {
-                  leagueDrafts = await SleeperApiService.getLeagueDrafts(leagueId);
-                  saveToCache('drafts', leagueId, season, leagueDrafts);
-                } catch (error) {
-                  console.warn(`Could not fetch drafts for league ${leagueId} season ${season}:`, error);
-                  leagueDrafts = [];
-                }
-              }
-
-              for (const draft of leagueDrafts) {
-                let draftPicks = loadFromCache('draft_picks', draft.draft_id);
-                if (!draftPicks) {
-                  try {
-                    draftPicks = await SleeperApiService.getDraftPicks(draft.draft_id);
-                    saveToCache('draft_picks', draft.draft_id, null, draftPicks);
-                  } catch (error) {
-                    console.warn(`Could not fetch picks for draft ${draft.draft_id}:`, error);
-                    draftPicks = [];
-                  }
-                }
-                seasonDraftsData[draft.draft_id] = draftPicks; // Store the raw array of picks
-              }
-            }
-            
-            // Fetch all transactions for the league
-            let leagueTransactions = loadFromCache('transactions', leagueId, season);
-            if (!leagueTransactions) {
-              try {
-                console.log(`    Fetching transactions for ${season} (League ${leagueId}) - fetching all weeks in parallel...`);
-                leagueTransactions = await SleeperApiService.getTransactions(leagueId);
-                saveToCache('transactions', leagueId, season, leagueTransactions);
-                console.log(`    Fetched ${leagueTransactions.length} transactions for ${season} (League ${leagueId})`);
-              } catch (error) {
-                console.error(`Error fetching transactions for league ${leagueId}:`, error);
-                // If we get errors, it means transactions aren't available for this league
-                // This is common for older seasons or leagues that don't have transaction data
-                leagueTransactions = [];
-                console.log(`    No transactions found or error for ${season} (League ${leagueId}), setting to empty.`);
-              }
-            } else {
-              console.log(`    Loaded ${leagueTransactions.length} transactions from cache for ${season} (League ${leagueId})`);
-            }
-            
-            // Filter transactions that involve the player
-            const playerTransactions = leagueTransactions.filter(t => 
-              (t.adds && t.adds[player.playerId]) || 
-              (t.drops && t.drops[player.playerId])
-            );
-            
-            console.log(`    Found ${playerTransactions.length} transactions involving player ${player.playerId} in ${season}.`);
-            
-            // Process each transaction to create a narrative
-            for (const transaction of playerTransactions) {
-              // Skip duplicate transactions (same transaction ID)
-              if (transaction.transaction_id && seenTransactionIds.has(transaction.transaction_id)) {
-                console.log(`    Skipping duplicate transaction ${transaction.transaction_id}`);
-                continue;
-              }
-              
-              // Add to seen transaction IDs if it has an ID
-              if (transaction.transaction_id) {
-                seenTransactionIds.add(transaction.transaction_id);
-              }
-              
-              const processedTransaction = {
-                id: transaction.transaction_id,
-                type: transaction.type,
-                timestamp: transaction.status_updated,
-                season: season,
-                leagueId: leagueId,
-                rawTransaction: transaction
-              };
-              
-              // Format the date
-              processedTransaction.date = formatDate(transaction.status_updated);
-              
-              // Get the manager names and create a narrative
-              const { fromTeam, toTeam, description } = getTransactionNarrative(
-                transaction, 
-                player.playerId,
-                histRosters,
-                histUsers,
-                seasonDraftsData // Pass the structured draft data
-              );
-              
-              processedTransaction.fromTeam = fromTeam;
-              processedTransaction.toTeam = toTeam;
-              processedTransaction.description = description;
-              
-              allTransactions.push(processedTransaction);
-            }
-          } catch (error) {
-            console.error(`Error processing transactions for league ${leagueId}:`, error);
-            console.log(`    Skipping season ${season} due to processing error.`);
-          }
-        }
-        
-        // Sort transactions by date (oldest first to show journey)
-        allTransactions.sort((a, b) => a.timestamp - b.timestamp);
-        
-        setTransactions(allTransactions);
-        console.log(`Total transactions found for player: ${allTransactions.length}`);
-      } catch (error) {
-        console.error('Error fetching player transactions:', error);
-      } finally {
-        // Set loading to false after a short delay to ensure UI updates
-        setTimeout(() => {
-          setLoading(false);
-        }, 300);
-      }
-    };
-    
-    fetchTransactions();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [player, seasonLeagueIds, getPlayerName, getPlayerNameById, getManagerName]);
-
-  // Helper to format draft pick details (NOT useCallback, as it takes dynamic seasonDraftsData)
+  // Helper to format draft pick details
   const formatDraftPick = (pick, histRosters, histUsers, seasonDraftsData) => {
     const originalOwnerName = pick.original_owner_id ? getManagerName(pick.original_owner_id, histRosters, histUsers) : 'Unknown';
     const currentOwnerName = pick.roster_id ? getManagerName(pick.roster_id, histRosters, histUsers) : 'Unknown';
@@ -244,9 +86,9 @@ const PlayerTradeHistoryModal = ({ player, onClose }) => {
         pickString += ` (owned by ${currentOwnerName})`;
     }
     return pickString;
-  }; // Removed useCallback
+  };
 
-  // Create a narrative for the transaction (NOT useCallback, as it takes dynamic seasonDraftsData)
+  // Create a narrative for the transaction
   const getTransactionNarrative = (transaction, playerId, histRosters, histUsers, seasonDraftsData) => {
     let fromTeam = '';
     let toTeam = '';
@@ -441,7 +283,166 @@ const PlayerTradeHistoryModal = ({ player, onClose }) => {
     }
     
     return { fromTeam, toTeam, description: baseDescription(description) };
-  }; // Removed useCallback
+  };
+
+  useEffect(() => {
+    const fetchTransactions = async () => {
+      if (!player || !player.playerId) {
+        setLoading(false);
+        return;
+      }
+      
+      setLoading(true);
+      // Determine current year for filtering past/future drafts
+      const currentYear = new Date().getFullYear();
+      
+      console.log(`Fetching transaction history for player ${player.playerId} (${getPlayerName(player)})`);
+      console.log(`Available season league IDs:`, seasonLeagueIds);
+      
+      try {
+        const allTransactions = [];
+        const seenTransactionIds = new Set(); // Track transaction IDs to prevent duplicates
+        
+        // Fetch transactions for each season
+        for (const season in seasonLeagueIds) {
+          const leagueId = seasonLeagueIds[season];
+          let seasonDraftsData = {}; // Store drafts and their picks for this season
+          console.log(`  Processing season: ${season}, League ID: ${leagueId}`);
+          
+          try {
+            // Fetch historical roster and user data for this season
+            let histRosters = loadFromCache('rosters', leagueId, season);
+            if (!histRosters) {
+              histRosters = await SleeperApiService.getLeagueRosters(leagueId);
+              saveToCache('rosters', leagueId, season, histRosters);
+            }
+            
+            let histUsers = loadFromCache('users', leagueId, season);
+            if (!histUsers) {
+              histUsers = await SleeperApiService.getLeagueUsers(leagueId);
+              saveToCache('users', leagueId, season, histUsers);
+            }
+            
+            // Fetch draft data for past seasons
+            if (parseInt(season) < currentYear) { // Only fetch draft picks for past seasons
+              let leagueDrafts = loadFromCache('drafts', leagueId, season);
+              if (!leagueDrafts) {
+                try {
+                  leagueDrafts = await SleeperApiService.getLeagueDrafts(leagueId);
+                  saveToCache('drafts', leagueId, season, leagueDrafts);
+                } catch (error) {
+                  console.warn(`Could not fetch drafts for league ${leagueId} season ${season}:`, error);
+                  leagueDrafts = [];
+                }
+              }
+
+              for (const draft of leagueDrafts) {
+                let draftPicks = loadFromCache('draft_picks', draft.draft_id);
+                if (!draftPicks) {
+                  try {
+                    draftPicks = await SleeperApiService.getDraftPicks(draft.draft_id);
+                    saveToCache('draft_picks', draft.draft_id, null, draftPicks);
+                  } catch (error) {
+                    console.warn(`Could not fetch picks for draft ${draft.draft_id}:`, error);
+                    draftPicks = [];
+                  }
+                }
+                seasonDraftsData[draft.draft_id] = draftPicks; // Store the raw array of picks
+              }
+            }
+            
+            // Fetch all transactions for the league
+            let leagueTransactions = loadFromCache('transactions', leagueId, season);
+            if (!leagueTransactions) {
+              try {
+                console.log(`    Fetching transactions for ${season} (League ${leagueId}) - fetching all weeks in parallel...`);
+                leagueTransactions = await SleeperApiService.getTransactions(leagueId);
+                saveToCache('transactions', leagueId, season, leagueTransactions);
+                console.log(`    Fetched ${leagueTransactions.length} transactions for ${season} (League ${leagueId})`);
+              } catch (error) {
+                console.error(`Error fetching transactions for league ${leagueId}:`, error);
+                // If we get errors, it means transactions aren't available for this league
+                // This is common for older seasons or leagues that don't have transaction data
+                leagueTransactions = [];
+                console.log(`    No transactions found or error for ${season} (League ${leagueId}), setting to empty.`);
+              }
+            } else {
+              console.log(`    Loaded ${leagueTransactions.length} transactions from cache for ${season} (League ${leagueId})`);
+            }
+            
+            // Filter transactions that involve the player
+            const playerTransactions = leagueTransactions.filter(t => 
+              (t.adds && t.adds[player.playerId]) || 
+              (t.drops && t.drops[player.playerId])
+            );
+            
+            console.log(`    Found ${playerTransactions.length} transactions involving player ${player.playerId} in ${season}.`);
+            
+            // Process each transaction to create a narrative
+            for (const transaction of playerTransactions) {
+              // Skip duplicate transactions (same transaction ID)
+              if (transaction.transaction_id && seenTransactionIds.has(transaction.transaction_id)) {
+                console.log(`    Skipping duplicate transaction ${transaction.transaction_id}`);
+                continue;
+              }
+              
+              // Add to seen transaction IDs if it has an ID
+              if (transaction.transaction_id) {
+                seenTransactionIds.add(transaction.transaction_id);
+              }
+              
+              const processedTransaction = {
+                id: transaction.transaction_id,
+                type: transaction.type,
+                timestamp: transaction.status_updated,
+                season: season,
+                leagueId: leagueId,
+                rawTransaction: transaction
+              };
+              
+              // Format the date
+              processedTransaction.date = formatDate(transaction.status_updated);
+              
+              // Get the manager names and create a narrative
+              const { fromTeam, toTeam, description } = getTransactionNarrative(
+                transaction, 
+                player.playerId,
+                histRosters,
+                histUsers,
+                seasonDraftsData // Pass the structured draft data
+              );
+              
+              processedTransaction.fromTeam = fromTeam;
+              processedTransaction.toTeam = toTeam;
+              processedTransaction.description = description;
+              
+              allTransactions.push(processedTransaction);
+            }
+          } catch (error) {
+            console.error(`Error processing transactions for league ${leagueId}:`, error);
+            console.log(`    Skipping season ${season} due to processing error.`);
+          }
+        }
+        
+        // Sort transactions by date (oldest first to show journey)
+        allTransactions.sort((a, b) => a.timestamp - b.timestamp);
+        
+        setTransactions(allTransactions);
+        console.log(`Total transactions found for player: ${allTransactions.length}`);
+      } catch (error) {
+        console.error('Error fetching player transactions:', error);
+      } finally {
+        // Set loading to false after a short delay to ensure UI updates
+        setTimeout(() => {
+          setLoading(false);
+        }, 300);
+      }
+    };
+    
+    fetchTransactions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [player, seasonLeagueIds, getPlayerName, getPlayerNameById, getManagerName]);
+
 
   // Format transaction date
   const formatDate = (timestamp) => {
