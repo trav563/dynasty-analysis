@@ -34,7 +34,7 @@ const PlayerTradeHistoryModal = ({ player, onClose }) => {
   useEffect(() => {
     // These functions depend on the useCallback helpers and data fetched inside the effect.
     // Defining them here makes them part of the effect's closure and avoids dependency array issues.
-    const formatDraftPick = (pick, histRosters, histUsers, leagueDrafts, seasonDraftPicks) => {
+    const formatDraftPick = (pick, histRosters, histUsers, allLeagueDrafts, seasonDraftPicks) => {
       const originalOwnerName = pick.original_owner_id ? getManagerName(pick.original_owner_id, histRosters, histUsers) : 'Unknown';
       const currentOwnerName = pick.roster_id ? getManagerName(pick.roster_id, histRosters, histUsers) : 'Unknown';
       const round = pick.round || '?';
@@ -45,8 +45,9 @@ const PlayerTradeHistoryModal = ({ player, onClose }) => {
   
       // Check if it's a past draft pick and we have player data
       if (parseInt(year) < new Date().getFullYear() && pick.pick) { // Removed pick.draft_id from condition
-        // Find the draft_id for this season. Assuming one draft per season.
-        const targetDraft = leagueDrafts.find(d => d.season === year);
+        // Find the draft_id for this season from the list of all league drafts.
+        // Assuming one main draft per season for simplicity.
+        const targetDraft = allLeagueDrafts.find(d => d.season === year);
         if (targetDraft) {
           const draftPicksForThisDraft = seasonDraftPicks[targetDraft.draft_id];
           if (draftPicksForThisDraft) {
@@ -86,7 +87,7 @@ const PlayerTradeHistoryModal = ({ player, onClose }) => {
       return pickString;
     };
 
-    const getTransactionNarrative = (transaction, playerId, histRosters, histUsers, leagueDrafts, seasonDraftPicks) => {
+    const getTransactionNarrative = (transaction, playerId, histRosters, histUsers, allLeagueDrafts, seasonDraftPicks) => {
       let fromTeam = '';
       let toTeam = '';
       let description = '';
@@ -116,7 +117,7 @@ const PlayerTradeHistoryModal = ({ player, onClose }) => {
       // Identify draft picks involved
       if (transaction.draft_picks && transaction.draft_picks.length > 0) {
         transaction.draft_picks.forEach(pick => {
-          draftPicksInvolved.push(formatDraftPick(pick, histRosters, histUsers, leagueDrafts, seasonDraftPicks)); // Pass new parameters
+          draftPicksInvolved.push(formatDraftPick(pick, histRosters, histUsers, allLeagueDrafts, seasonDraftPicks)); // Pass allLeagueDrafts
         });
       }
   
@@ -322,7 +323,7 @@ const PlayerTradeHistoryModal = ({ player, onClose }) => {
             
             // Fetch draft data for past seasons
             if (parseInt(season) < currentYear) { // Only fetch draft picks for past seasons
-              let leagueDrafts = loadFromCache('drafts', leagueId, season);
+              leagueDrafts = loadFromCache('drafts', leagueId, season);
               if (!leagueDrafts) {
                 try {
                   leagueDrafts = await SleeperApiService.getLeagueDrafts(leagueId);
