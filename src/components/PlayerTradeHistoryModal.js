@@ -34,7 +34,7 @@ const PlayerTradeHistoryModal = ({ player, onClose }) => {
   useEffect(() => {
     // These functions depend on the useCallback helpers and data fetched inside the effect.
     // Defining them here makes them part of the effect's closure and avoids dependency array issues.
-    const formatDraftPick = (pick, histRosters, histUsers, seasonDraftsData) => {
+    const formatDraftPick = (pick, histRosters, histUsers, leagueDrafts, seasonDraftPicks) => {
       const originalOwnerName = pick.original_owner_id ? getManagerName(pick.original_owner_id, histRosters, histUsers) : 'Unknown';
       const currentOwnerName = pick.roster_id ? getManagerName(pick.roster_id, histRosters, histUsers) : 'Unknown';
       const round = pick.round || '?';
@@ -44,28 +44,32 @@ const PlayerTradeHistoryModal = ({ player, onClose }) => {
       let pickString = `${year} Round ${round}`;
   
       // Check if it's a past draft pick and we have player data
-      if (parseInt(year) < new Date().getFullYear() && pick.draft_id && pick.pick) {
-        const draftPicksForThisDraft = seasonDraftsData[pick.draft_id];
-        if (draftPicksForThisDraft) {
-          // Find the pick by matching the overall pick number. The 'pick' property on a traded
-          // pick object from a transaction appears to represent the overall pick number ('pick_no').
-          // We use Number() to guard against type mismatches (e.g., '17' vs 17).
-          const draftedPlayerPick = draftPicksForThisDraft.find(
-            draftedPick => Number(draftedPick.pick_no) === Number(pick.pick)
-          );
-          if (draftedPlayerPick && draftedPlayerPick.player_id) {
-            const draftedPlayerName = getPlayerNameById(draftedPlayerPick.player_id);
-            // Use the round from the completed pick for accuracy
-            const actualRound = draftedPlayerPick.round || round;
-            pickString = `${draftedPlayerName} (${year} Round ${actualRound} Pick ${draftedPlayerPick.draft_slot})`;
-            
-            // Add ownership narrative
-            if (originalOwnerName !== currentOwnerName) {
-              pickString += ` (orig. ${originalOwnerName} to ${currentOwnerName})`;
-            } else {
-              pickString += ` (owned by ${currentOwnerName})`;
+      if (parseInt(year) < new Date().getFullYear() && pick.pick) { // Removed pick.draft_id from condition
+        // Find the draft_id for this season. Assuming one draft per season.
+        const targetDraft = leagueDrafts.find(d => d.season === year);
+        if (targetDraft) {
+          const draftPicksForThisDraft = seasonDraftPicks[targetDraft.draft_id];
+          if (draftPicksForThisDraft) {
+            // Find the pick by matching the overall pick number. The 'pick' property on a traded
+            // pick object from a transaction appears to represent the overall pick number ('pick_no').
+            // We use Number() to guard against type mismatches (e.g., '17' vs 17).
+            const draftedPlayerPick = draftPicksForThisDraft.find(
+              draftedPick => Number(draftedPick.pick_no) === Number(pick.pick)
+            );
+            if (draftedPlayerPick && draftedPlayerPick.player_id) {
+              const draftedPlayerName = getPlayerNameById(draftedPlayerPick.player_id);
+              // Use the round from the completed pick for accuracy
+              const actualRound = draftedPlayerPick.round || round;
+              pickString = `${draftedPlayerName} (${year} Round ${actualRound} Pick ${draftedPlayerPick.draft_slot})`;
+              
+              // Add ownership narrative
+              if (originalOwnerName !== currentOwnerName) {
+                pickString += ` (orig. ${originalOwnerName} to ${currentOwnerName})`;
+              } else {
+                pickString += ` (owned by ${currentOwnerName})`;
+              }
+              return pickString;
             }
-            return pickString;
           }
         }
       }
@@ -82,7 +86,7 @@ const PlayerTradeHistoryModal = ({ player, onClose }) => {
       return pickString;
     };
 
-    const getTransactionNarrative = (transaction, playerId, histRosters, histUsers, seasonDraftsData) => {
+    const getTransactionNarrative = (transaction, playerId, histRosters, histUsers, leagueDrafts, seasonDraftPicks) => {
       let fromTeam = '';
       let toTeam = '';
       let description = '';
@@ -112,7 +116,7 @@ const PlayerTradeHistoryModal = ({ player, onClose }) => {
       // Identify draft picks involved
       if (transaction.draft_picks && transaction.draft_picks.length > 0) {
         transaction.draft_picks.forEach(pick => {
-          draftPicksInvolved.push(formatDraftPick(pick, histRosters, histUsers, seasonDraftsData)); // Pass seasonDraftsData
+          draftPicksInvolved.push(formatDraftPick(pick, histRosters, histUsers, leagueDrafts, seasonDraftPicks)); // Pass new parameters
         });
       }
   
@@ -401,7 +405,8 @@ const PlayerTradeHistoryModal = ({ player, onClose }) => {
                 player.playerId,
                 histRosters,
                 histUsers,
-                seasonDraftsData // Pass the structured draft data
+                leagueDrafts, // Pass league drafts metadata
+                seasonDraftsData // Pass the structured draft picks data
               );
               
               processedTransaction.fromTeam = fromTeam;
