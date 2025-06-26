@@ -8,6 +8,29 @@ const PlayerTradeHistoryModal = ({ player, onClose }) => {
   const [transactions, setTransactions] = useState([]);
   const { seasonLeagueIds, players: allPlayersData } = useContext(LeagueContext);
 
+  // Helper function to get player's full name
+  const getPlayerName = useCallback((player) => {
+    if (!player) return 'Unknown Player';
+    return `${player.first_name || ''} ${player.last_name || ''}`.trim() || 'Unknown Player';
+  }, []);
+
+  // Helper function to get player's full name by ID
+  const getPlayerNameById = useCallback((pId) => {
+    const p = allPlayersData?.[pId];
+    return p ? `${p.first_name || ''} ${p.last_name || ''}`.trim() : `Player ${pId}`;
+  }, [allPlayersData]);
+
+  // Helper function to get manager name from roster ID
+  const getManagerName = useCallback((rosterId, histRosters, histUsers) => {
+    if (!histRosters || !histUsers || !rosterId) return 'Unknown Manager';
+    
+    const roster = histRosters.find(r => r.roster_id === parseInt(rosterId));
+    if (!roster) return `Roster ${rosterId}`;
+    
+    const user = histUsers.find(u => u.user_id === roster.owner_id);
+    return user?.display_name || `Roster ${rosterId}`;
+  }, []);
+
   useEffect(() => {
     const fetchTransactions = async () => {
       if (!player || !player.playerId) {
@@ -165,29 +188,6 @@ const PlayerTradeHistoryModal = ({ player, onClose }) => {
     fetchTransactions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [player, seasonLeagueIds, getPlayerName, getPlayerNameById, getManagerName]);
-
-  // Helper function to get player's full name
-  const getPlayerName = useCallback((player) => {
-    if (!player) return 'Unknown Player';
-    return `${player.first_name || ''} ${player.last_name || ''}`.trim() || 'Unknown Player';
-  }, []);
-
-  // Helper function to get player's full name by ID
-  const getPlayerNameById = useCallback((pId) => {
-    const p = allPlayersData?.[pId];
-    return p ? `${p.first_name || ''} ${p.last_name || ''}`.trim() : `Player ${pId}`;
-  }, [allPlayersData]);
-
-  // Helper function to get manager name from roster ID
-  const getManagerName = useCallback((rosterId, histRosters, histUsers) => {
-    if (!histRosters || !histUsers || !rosterId) return 'Unknown Manager';
-    
-    const roster = histRosters.find(r => r.roster_id === parseInt(rosterId));
-    if (!roster) return `Roster ${rosterId}`;
-    
-    const user = histUsers.find(u => u.user_id === roster.owner_id);
-    return user?.display_name || `Roster ${rosterId}`;
-  }, []);
 
   // Helper to format draft pick details (NOT useCallback, as it takes dynamic seasonDraftsData)
   const formatDraftPick = (pick, histRosters, histUsers, seasonDraftsData) => {
