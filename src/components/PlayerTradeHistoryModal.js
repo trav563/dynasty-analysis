@@ -360,34 +360,6 @@ const PlayerTradeHistoryModal = ({ player, onClose }) => {
               saveToCache('users', leagueId, season, histUsers);
             }
             
-            // Fetch draft data for past seasons
-            if (parseInt(season) < currentYear) { // Only fetch draft picks for past seasons
-              leagueDrafts = loadFromCache('drafts', leagueId, season);
-              if (!leagueDrafts) {
-                try {
-                  leagueDrafts = await SleeperApiService.getLeagueDrafts(leagueId);
-                  saveToCache('drafts', leagueId, season, leagueDrafts);
-                } catch (error) {
-                  console.warn(`Could not fetch drafts for league ${leagueId} season ${season}:`, error);
-                  leagueDrafts = [];
-                }
-              }
-
-              for (const draft of leagueDrafts) {
-                let draftPicks = loadFromCache('draft_picks', draft.draft_id);
-                if (!draftPicks) {
-                try {
-                  draftPicks = await SleeperApiService.getDraftPicks(draft.draft_id);
-                    saveToCache('draft_picks', draft.draft_id, null, draftPicks);
-                  } catch (error) {
-                    console.warn(`Could not fetch picks for draft ${draft.draft_id}:`, error);
-                    draftPicks = [];
-                  }
-                }
-                seasonDraftsData[draft.draft_id] = draftPicks; // Store the raw array of picks
-              }
-            }
-            
             // Fetch all transactions for the league
             let leagueTransactions = loadFromCache('transactions', leagueId, season);
             if (!leagueTransactions) {
