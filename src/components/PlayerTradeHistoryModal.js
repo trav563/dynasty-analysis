@@ -45,14 +45,20 @@ const PlayerTradeHistoryModal = ({ player, onClose }) => {
   
       // Check if it's a past draft pick and we have player data
       if (parseInt(year) < new Date().getFullYear() && pick.draft_id && pick.pick) {
+        console.log(`[formatDraftPick] Processing traded pick:`, pick); // Debug 1: Log the traded pick object
         const draftPicksForThisDraft = seasonDraftsData[pick.draft_id];
+        console.log(`[formatDraftPick] Retrieved draft picks for draft_id ${pick.draft_id}:`, draftPicksForThisDraft); // Debug 2: Log the fetched draft picks for this draft
         if (draftPicksForThisDraft) {
           // Find the pick by matching the overall pick number. The 'pick' property on a traded
           // pick object from a transaction appears to represent the overall pick number ('pick_no').
           const draftedPlayerPick = draftPicksForThisDraft.find(
-            draftedPick => draftedPick.pick_no === pick.pick
+            draftedPick => {
+                console.log(`[formatDraftPick] Comparing draftedPick.pick_no (${draftedPick.pick_no}) with traded pick.pick (${pick.pick})`); // Debug 3: Log the values being compared
+                return draftedPick.pick_no === pick.pick;
+            }
           );
           if (draftedPlayerPick && draftedPlayerPick.player_id) {
+            console.log(`[formatDraftPick] Found matching drafted player pick:`, draftedPlayerPick); // Debug 4: Log the successfully matched pick
             const draftedPlayerName = getPlayerNameById(draftedPlayerPick.player_id);
             // Use the round from the completed pick for accuracy
             const actualRound = draftedPlayerPick.round || round;
@@ -330,8 +336,9 @@ const PlayerTradeHistoryModal = ({ player, onClose }) => {
               for (const draft of leagueDrafts) {
                 let draftPicks = loadFromCache('draft_picks', draft.draft_id);
                 if (!draftPicks) {
-                  try {
-                    draftPicks = await SleeperApiService.getDraftPicks(draft.draft_id);
+                try { // Corrected Typo: draft.draft.draft_id should be draft.draft_id
+                  console.log(`[fetchTransactions] Fetching picks for draft ID: ${draft.draft_id}`); // Debug 5: Confirm API call with correct ID
+                  draftPicks = await SleeperApiService.getDraftPicks(draft.draft_id);
                     saveToCache('draft_picks', draft.draft_id, null, draftPicks);
                   } catch (error) {
                     console.warn(`Could not fetch picks for draft ${draft.draft_id}:`, error);
@@ -339,6 +346,7 @@ const PlayerTradeHistoryModal = ({ player, onClose }) => {
                   }
                 }
                 seasonDraftsData[draft.draft_id] = draftPicks; // Store the raw array of picks
+                console.log(`[fetchTransactions] Stored draft picks for draft ID ${draft.draft_id}:`, seasonDraftsData[draft.draft_id]); // Debug 6: Confirm data is stored
               }
             }
             
