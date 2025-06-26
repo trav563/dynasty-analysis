@@ -202,12 +202,20 @@ const PlayerTradeHistoryModal = ({ player, onClose }) => {
     // Check if it's a past draft pick and we have player data
     // Only try to find player if it's a past season and we have draft_id and pick number
     if (parseInt(year) < new Date().getFullYear() && pick.draft_id && pick.round && pick.pick) {
+      console.log(`Attempting to find player for draft pick: Year ${year}, Round ${pick.round}, Pick ${pick.pick}, Draft ID ${pick.draft_id}`);
       const draftPicksForThisDraft = seasonDraftsData[pick.draft_id];
       if (draftPicksForThisDraft) {
+        console.log(`Found draft data for draft ID ${pick.draft_id}. Total picks: ${draftPicksForThisDraft.length}`);
+        console.log(`Sample draft pick data:`, draftPicksForThisDraft[0]);
+        
         // Find the pick by matching round and the pick number within the round (draft_slot)
         const draftedPlayerPick = draftPicksForThisDraft.find(
           draftedPick => draftedPick.round === pick.round && draftedPick.draft_slot === pick.pick
         );
+        
+        console.log(`Match result:`, draftedPlayerPick ? 
+          `Found match! Player ID: ${draftedPlayerPick.player_id}` : 
+          `No match found for Round ${pick.round}, Pick ${pick.pick}`);
         if (draftedPlayerPick && draftedPlayerPick.player_id) {
           const draftedPlayerName = getPlayerNameById(draftedPlayerPick.player_id);
           pickString = `${draftedPlayerName} (${year} Round ${round}`;
