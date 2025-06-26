@@ -70,11 +70,7 @@ const PlayerTradeHistoryModal = ({ player, onClose }) => {
                     draftPicks = [];
                   }
                 }
-                const picksMap = draftPicks.reduce((acc, pick) => { 
-                  acc[pick.pick_no] = pick; 
-                  return acc; 
-                }, {});
-                seasonDraftsData[draft.draft_id] = picksMap;
+                seasonDraftsData[draft.draft_id] = draftPicks; // Store the raw array of picks
               }
             }
             
@@ -168,7 +164,7 @@ const PlayerTradeHistoryModal = ({ player, onClose }) => {
     
     fetchTransactions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [player, seasonLeagueIds]);
+  }, [player, seasonLeagueIds, getPlayerName, getPlayerNameById, getManagerName]);
 
   // Helper function to get player's full name
   const getPlayerName = useCallback((player) => {
@@ -205,10 +201,13 @@ const PlayerTradeHistoryModal = ({ player, onClose }) => {
 
     // Check if it's a past draft pick and we have player data
     // Only try to find player if it's a past season and we have draft_id and pick number
-    if (parseInt(year) < new Date().getFullYear() && pick.draft_id && pick.pick_no) {
+    if (parseInt(year) < new Date().getFullYear() && pick.draft_id && pick.round && pick.pick) {
       const draftPicksForThisDraft = seasonDraftsData[pick.draft_id];
       if (draftPicksForThisDraft) {
-        const draftedPlayerPick = draftPicksForThisDraft[pick.pick_no]; // Lookup by overall pick number
+        // Find the pick by matching round and the pick number within the round (draft_slot)
+        const draftedPlayerPick = draftPicksForThisDraft.find(
+          draftedPick => draftedPick.round === pick.round && draftedPick.draft_slot === pick.pick
+        );
         if (draftedPlayerPick && draftedPlayerPick.player_id) {
           const draftedPlayerName = getPlayerNameById(draftedPlayerPick.player_id);
           pickString = `${draftedPlayerName} (${year} Round ${round}`;
