@@ -34,7 +34,7 @@ const PlayerTradeHistoryModal = ({ player, onClose }) => {
   useEffect(() => {
     // These functions depend on the useCallback helpers and data fetched inside the effect.
     // Defining them here makes them part of the effect's closure and avoids dependency array issues.
-    const formatDraftPick = (pick, histRosters, histUsers, allLeagueDrafts, seasonDraftPicks) => {
+    const formatDraftPick = (pick, histRosters, histUsers, allSeasonsDrafts, allSeasonsPicks) => {
       const originalOwnerName = pick.original_owner_id ? getManagerName(pick.original_owner_id, histRosters, histUsers) : 'Unknown';
       const currentOwnerName = pick.roster_id ? getManagerName(pick.roster_id, histRosters, histUsers) : 'Unknown';
       const round = pick.round || '?';
@@ -44,12 +44,13 @@ const PlayerTradeHistoryModal = ({ player, onClose }) => {
       let pickString = `${year} Round ${round}`;
   
       // Check if it's a past draft pick and we have player data
-      if (parseInt(year) < new Date().getFullYear() && pick.pick) { // Removed pick.draft_id from condition
-        // Find the draft_id for this season from the list of all league drafts.
-        // Assuming one main draft per season for simplicity.
-        const targetDraft = allLeagueDrafts.find(d => d.season === year);
-        if (targetDraft) {
-          const draftPicksForThisDraft = seasonDraftPicks[targetDraft.draft_id];
+      if (parseInt(year) < new Date().getFullYear() && pick.pick) {
+        // Find the draft metadata for the pick's season from the master list of all drafts.
+        const draftsForYear = allSeasonsDrafts[year];
+        if (draftsForYear && draftsForYear.length > 0) {
+          // Assuming one main draft per season for simplicity.
+          const targetDraft = draftsForYear[0];
+          const draftPicksForThisDraft = allSeasonsPicks[targetDraft.draft_id];
           if (draftPicksForThisDraft) {
             // Find the pick by matching the overall pick number. The 'pick' property on a traded
             // pick object from a transaction appears to represent the overall pick number ('pick_no').
@@ -87,7 +88,7 @@ const PlayerTradeHistoryModal = ({ player, onClose }) => {
       return pickString;
     };
 
-    const getTransactionNarrative = (transaction, playerId, histRosters, histUsers, allLeagueDrafts, seasonDraftPicks) => {
+    const getTransactionNarrative = (transaction, playerId, histRosters, histUsers, allSeasonsDrafts, allSeasonsPicks) => {
       let fromTeam = '';
       let toTeam = '';
       let description = '';
@@ -117,7 +118,7 @@ const PlayerTradeHistoryModal = ({ player, onClose }) => {
       // Identify draft picks involved
       if (transaction.draft_picks && transaction.draft_picks.length > 0) {
         transaction.draft_picks.forEach(pick => {
-          draftPicksInvolved.push(formatDraftPick(pick, histRosters, histUsers, allLeagueDrafts, seasonDraftPicks)); // Pass allLeagueDrafts
+          draftPicksInvolved.push(formatDraftPick(pick, histRosters, histUsers, allSeasonsDrafts, allSeasonsPicks));
         });
       }
   
@@ -300,7 +301,45 @@ const PlayerTradeHistoryModal = ({ player, onClose }) => {
         const allTransactions = [];
         const seenTransactionIds = new Set(); // Track transaction IDs to prevent duplicates
         
-        // Fetch transactions for each season
+        // Pre-fetch all historical draft data to handle cross-season pick trades
+        const allSeasonsDrafts = {}; // { '2022': [draft_obj], '2021': [draft_obj] }
+        const allSeasonsPicks = {};  // { 'draft_id_1': [picks], 'draft_id_2': [picks] }
+
+        // First, fetch all draft data for all past seasons
+        for (const season in seasonLeagueIds) {
+          if (parseInt(season) < currentYear) {
+            const leagueId = seasonLeagueIds[season];
+            let draftsForSeason = loadFromCache('drafts', leagueId, season);
+            if (!draftsForSeason) {
+              try {
+                draftsForSeason = await SleeperApiService.getLeagueDrafts(leagueId);
+                saveToCache('drafts', leagueId, season, draftsForSeason);
+              } catch (error) {
+                console.warn(`Could not fetch drafts for league ${leagueId} season ${season}:`, error);
+                draftsForSeason = [];
+              }
+            }
+            allSeasonsDrafts[season] = draftsForSeason;
+
+            for (const draft of draftsForSeason) {
+              if (!allSeasonsPicks[draft.draft_id]) { // Avoid re-fetching if already present
+                let picksForDraft = loadFromCache('draft_picks', draft.draft_id);
+                if (!picksForDraft) {
+                  try {
+                    picksForDraft = await SleeperApiService.getDraftPicks(draft.draft_id);
+                    saveToCache('draft_picks', draft.draft_id, null, picksForDraft);
+                  } catch (error) {
+                    console.warn(`Could not fetch picks for draft ${draft.draft_id}:`, error);
+                    picksForDraft = [];
+                  }
+                }
+                allSeasonsPicks[draft.draft_id] = picksForDraft;
+              }
+            }
+          }
+        }
+        
+        // Now fetch transactions for each season
         for (const season in seasonLeagueIds) {
           const leagueId = seasonLeagueIds[season];
           let seasonDraftsData = {}; // Store drafts and their picks for this season
@@ -407,8 +446,8 @@ const PlayerTradeHistoryModal = ({ player, onClose }) => {
                 player.playerId,
                 histRosters,
                 histUsers,
-                leagueDrafts, // Pass league drafts metadata
-                seasonDraftsData // Pass the structured draft picks data
+                allSeasonsDrafts, // Pass the master draft metadata
+                allSeasonsPicks   // Pass the master picks data
               );
               
               processedTransaction.fromTeam = fromTeam;
